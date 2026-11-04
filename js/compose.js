@@ -925,6 +925,7 @@ window.MEM = window.MEM || {};
   /* ---------------- build one composition ---------------- */
   function buildOne(key, photos, ctx) {
     var c = COMP[key];
+    if (!photos || !photos.length) return [page()];   // never hand a comp an empty hand
     if (c.build) return c.build(photos, ctx);
     var pg = page();
     var slots = c.ops.filter(function (o) { return o.t === 'photo' || o.t === 'bleed'; });
