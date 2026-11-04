@@ -263,7 +263,7 @@ body.solo-mode .page-wrap{margin:0}
 .btn-danger:hover{background:#9d3a2a;color:#fff;border-color:#9d3a2a}
 
 /* ---------- zine (小书 / 跨页) ---------- */
-.zine-panel{display:flex;flex-direction:column;gap:14px;max-width:1080px}
+.zine-panel{display:flex;flex-direction:column;gap:14px;max-width:1240px}
 .zine-head{max-width:56ch}
 .zine-list{display:flex;flex-direction:column;gap:30px}
 .spread-row{display:flex;gap:2px;align-items:flex-start;position:relative}
