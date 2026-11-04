@@ -99,3 +99,36 @@ node _inspect/accept.mjs     # 全流程：导入→刷新→版本→恢复→�
 ### 仍未做
 - 照片标签（tags）字段还没用上；`analysis` 里没有语义内容（分不清海边/街道），所以「自动挑主视觉」仍只看比例、明暗、色彩。
 - 照片库没有搜索/批量选择。
+
+
+---
+
+# 第二阶段：智能文字与 Editorial Assistant（同日）
+
+## 新增文件
+- `js/text.js` —— 三层文字模型：`{version, style, noText, memory, items:[{id, role, text, source, isUserEdited, createdAt, originalTextId}]}`。
+  `toEngine()` 只吐 `{title, year, sections, lines}` 给排版引擎；**字体/字号/位置全在 compose.js，文字模块不碰**。
+  `adopt(doc, direction)` 采纳 AI 方向时**跳过 isUserEdited 的行**，返回 `{applied, kept}`。
+- `js/ai/schemas.js` —— 唯一允许的输出 Schema + `normalize()`（截断跑题的标题到 16 字、拆首句、过滤「时光/岁月/仿佛/光影交错」这类套话、去重）+ `lint()`（编地点/编日期/含 HTML 就报警）。
+- `js/ai/prompts.js` —— 系统提示（事实纪律 5 条）+ 三个固定编辑角度：`time` 时间纪实 / `objects` 物件静物 / `voice` 第一人称。每个角度单独一次调用，逼出差异。
+- `js/ai/ollama.js` —— `health()` / `chat()`，AbortController 超时、错误归因（offline / timeout / model / json / empty），base 与 model 存 localStorage 可改。
+- `js/ai/provider.js` —— 状态机 + 人话解释；启动时探测一次，之后只在按钮点击时才调用。
+- `js/ai/editorial.js` —— `buildBrief()`（只放真知道的东西：张数、画幅比、取色调色板、明暗、用户记忆、已手写的行；**日期/地点一律 null**，因为不解析 EXIF，不编）+ 三路并发生成 + 相似度守卫（标题+短句 2-gram 重合 >0.5 会提示「两个方向偏像」）。
+
+## 关键决定
+- **不解析 EXIF**：`file.lastModified` 是文件时间不是拍摄时间，把它当拍摄日期就是编造。所以 brief 里 `dates: null, places: null`，prompt 明确「时间未知就不要写具体日期」。
+- **不用一次调用要三个方向**：3B 模型会自我复制（实测三张卡都是「午后的光与回忆/时光流转/光影交错」）。改成三个角度各调用一次，并发，约 8–14 秒。
+- **输出后处理是必须的**：3B 模型会写 60 字的长标题、堆套话；`tidyTitle()` 取首个短句并截到 16 字，`BANNED` 正则删掉套话短句，少于 3 条时退回未过滤版本。
+- **模型可选**：面板里有模型下拉（读 `/api/tags`），换更强的模型立即生效。
+
+## 实测（本机 qwen2.5vl:3b）
+- 三个角度 8–14s 返回，标题「清晨 / 橙棕色的树叶 / 晨光初现」，三个角度真的不同。
+- 手写书名 + 采纳 AI：书名保留（`source: user`），只补了 5 条短句。
+- 拔掉 Ollama（base 指死端口）：0ms 返回内置模板，界面明说「本地模型没连上」。
+- No Text：标题/短句/章节词全空，9 页 17 框照常渲染。
+- 版本往返：带文字存版本 → 改标题 → 恢复 → 文字回到原样。
+
+## 已知限制
+- 3B 模型的中文质量上限就在那：概念句仍会写套话，`concept` 字段没做过滤。换 7B+ 明显更好，面板里可以直接换。
+- 没做多模态（不看图），所以文字只能基于张数/色调/明暗/用户记忆，不能写「照片里有一只猫」。
+- 封面/内页/结尾分别用不同风格：数据结构已支持（doc 里可按 role 存 style），UI 还没做。

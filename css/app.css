@@ -449,3 +449,35 @@ body.solo-mode .page-wrap{margin:0}
 /* the small segmented control inside a modal toolbar keeps its own width */
 #plibFilter{display:inline-flex;flex:none;width:auto;grid-template-columns:none}
 #plibFilter button{white-space:nowrap;padding:0 12px;height:26px;font-size:11.5px}
+
+/* ---------- editorial assistant ---------- */
+.text-row--inline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.text-select{height:30px;font-size:12.5px;background:var(--paper);border:1px solid var(--line);border-radius:2px;color:var(--ink);padding:0 6px}
+.text-check{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted)}
+.ai-block{border:1px solid var(--line);border-radius:3px;padding:14px;background:rgba(26,24,21,.02)}
+.ai-head{display:flex;gap:8px;flex-wrap:wrap}
+.ai-status{margin:10px 0 0;font-size:11.5px;line-height:1.6;color:var(--muted)}
+.ai-status[data-state="ok"]{color:#4a6b4a}
+.ai-status[data-state="off"]{color:#8a5a2a}
+.ai-status[data-state="busy"]{color:var(--ink)}
+.ai-ideas{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.ai-ideas:empty{display:none}
+.idea{border:1px solid var(--line);background:var(--paper);padding:11px;display:flex;flex-direction:column;gap:6px}
+.idea-head{display:flex;align-items:baseline;gap:6px}
+.idea-no{font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums}
+.idea-title{font-size:13.5px;line-height:1.35}
+.idea-sub{margin:0;font-size:11px;color:var(--muted);font-style:italic}
+.idea-concept{margin:0;font-size:11.5px;color:var(--ink2);line-height:1.6}
+.idea-moods{display:flex;gap:4px;flex-wrap:wrap}
+.idea-mood{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);padding:1px 4px;border-radius:2px}
+.idea-chapters{margin:0;font-size:10.5px;color:var(--muted);letter-spacing:.08em}
+.idea-caps{margin:0;padding-left:12px;font-size:11px;color:var(--ink2);line-height:1.7}
+.idea .btn{margin-top:auto}
+.ai-help{margin-top:12px;font-size:11px;color:var(--muted)}
+.ai-help summary{cursor:pointer;color:var(--faint)}
+.ai-help code{display:block;margin:6px 0;padding:6px 8px;background:rgba(26,24,21,.05);font-size:11px;overflow-x:auto}
+@media (max-width:760px){.ai-ideas{grid-template-columns:1fr}}
+
+#textMemory{min-height:54px;max-height:120px}
+
+.text-select--sm{height:26px;font-size:11.5px;max-width:180px}

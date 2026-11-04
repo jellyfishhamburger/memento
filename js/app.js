@@ -36,6 +36,9 @@
     btnText: $('#btnText'), textPanel: $('#textPanel'), textTitle: $('#textTitle'), textYear: $('#textYear'),
     textSections: $('#textSections'), textLines: $('#textLines'), textNote: $('#textNote'),
     textReset: $('#textReset'), textDone: $('#textDone'), textClose: $('#textClose'),
+    textMemory: $('#textMemory'), textStyle: $('#textStyle'), textNoText: $('#textNoText'),
+    aiBtn: $('#aiBtn'), aiAgain: $('#aiAgain'), aiStatus: $('#aiStatus'), aiIdeas: $('#aiIdeas'),
+    aiSetup: $('#aiSetup'), aiModel: $('#aiModel'),
     empty: $('#empty'), stat: $('#statLine'),
     zinePanel: $('#zinePanel'), zineList: $('#zineList'), zineNote: $('#zineNote'),
     title: $('#titleInput'), file: $('#fileInput'),
@@ -134,15 +137,18 @@
 
   /* every direction keeps its own words; edits are data, so they survive a
      direction switch and a reload */
-  function textFor(dir) {
-    if (!state.texts[dir]) {
-      var d = M.TEXT_DEFAULT[dir] || M.TEXT_DEFAULT.zine;
-      state.texts[dir] = { title: d.title, year: d.year, sections: d.sections.slice(), lines: d.lines.slice() };
+  /* ---------- text: content with provenance, layout stays in the engine ---------- */
+  function docFor(dir) {
+    if (!state.texts[dir] || !Array.isArray(state.texts[dir].items)) {
+      state.texts[dir] = M.TEXT.ensure(state.texts[dir], dir);
     }
     return state.texts[dir];
   }
+  /* what compose.js wants: { title, year, sections, lines } */
+  function textFor(dir) { return M.TEXT.toEngine(docFor(dir), dir); }
+
   function saveText() {
-    try { localStorage.setItem(LS_TEXT, JSON.stringify(state.texts)); } catch (e) { /* 配额满了就算了 */ }
+    try { localStorage.setItem(LS_TEXT, JSON.stringify(state.texts)); } catch (e) {}
   }
   function loadSavedText() {
     try {
@@ -150,49 +156,55 @@
       var obj = raw ? JSON.parse(raw) : null;
       if (!obj || typeof obj !== 'object') return;
       Object.keys(obj).forEach(function (k) {
-        var t = obj[k];
-        if (!t || typeof t !== 'object') return;
-        state.texts[k] = {
-          title: String(t.title || ''),
-          year: Number(t.year) || new Date().getFullYear(),
-          sections: Array.isArray(t.sections) && t.sections.length ? t.sections.slice() : null,
-          lines: Array.isArray(t.lines) && t.lines.length ? t.lines.slice() : null
-        };
-        if (!state.texts[k].sections || !state.texts[k].lines) {
-          var d = M.TEXT_DEFAULT[k] || M.TEXT_DEFAULT.zine;
-          state.texts[k].sections = state.texts[k].sections || d.sections.slice();
-          state.texts[k].lines = state.texts[k].lines || d.lines.slice();
-        }
+        if (obj[k] && !Array.isArray(obj[k].items)) state.texts[k] = M.TEXT.fromLegacy(obj[k], k);
       });
-    } catch (e) { /* 坏掉的存档不挡路 */ }
+    } catch (e) {}
   }
 
-  function openText() {
-    var t = textFor(state.direction);
-    el.textTitle.value = t.title;
-    el.textYear.value = t.year;
-    el.textSections.value = (t.sections || []).join('，');
-    el.textLines.value = (t.lines || []).join('\n');
-    el.textNote.textContent = isJp()
-      ? '日式小书的语气是安静的：短句，少形容词，不解释。改完立刻重排。'
-      : '杂志 Zine 的语气是冷静的旁白。改完立刻重排。';
-    el.textPanel.hidden = false;
-    el.textTitle.focus();
-  }
   function closeText() { el.textPanel.hidden = true; }
 
+  function openText() {
+    var doc = docFor(state.direction);
+    var t = M.TEXT.toEngine(doc, state.direction);
+    el.textTitle.value = t.title;
+    el.textYear.value = t.year;
+    el.textSections.value = M.TEXT.roleItems(doc, 'section').map(function (x) { return x.text; }).join('，');
+    el.textLines.value = M.TEXT.roleItems(doc, 'caption').map(function (x) { return x.text; }).join('\n');
+    if (el.textMemory) el.textMemory.value = doc.memory || '';
+    if (el.textStyle) el.textStyle.value = doc.style || 'poetic';
+    if (el.textNoText) el.textNoText.checked = !!doc.noText;
+    el.textNote.textContent = isJp()
+      ? '日式小书的语气是安静的：短句，少形容词，不解释。你自己写的字永远不会被 AI 覆盖。'
+      : '杂志 Zine 的语气是冷静的旁白。你自己写的字永远不会被 AI 覆盖。';
+    el.textPanel.hidden = false;
+    renderAiStatus();
+  }
+
+  /* every keystroke in the panel is the user's own words */
+  function applyTextField(role, index, value) {
+    var doc = docFor(state.direction);
+    M.TEXT.setText(doc, role, index, value, 'user');
+    saveText();
+    scheduleSave();
+  }
+
   function adoptText() {
-    var t = textFor(state.direction);
+    var doc = docFor(state.direction);
     var title = el.textTitle.value.trim() || '未命名的一卷';
-    var year = parseInt(el.textYear.value, 10) || new Date().getFullYear();
     var sections = el.textSections.value.replace(/[，；;]/g, ',').split(',')
       .map(function (s) { return s.trim(); }).filter(Boolean);
     var lines = el.textLines.value.split(String.fromCharCode(10))
       .map(function (s) { return s.trim(); }).filter(Boolean);
-    t.title = title; t.year = year;
-    if (sections.length) t.sections = sections;
-    if (lines.length) t.lines = lines;
-    state.title = title; state.year = year;
+
+    applyTextField('title', 0, title);
+    sections.forEach(function (s, i) { applyTextField('section', i, s); });
+    lines.forEach(function (s, i) { applyTextField('caption', i, s); });
+    if (el.textMemory) doc.memory = el.textMemory.value;
+    if (el.textStyle) doc.style = el.textStyle.value;
+    if (el.textNoText) doc.noText = el.textNoText.checked;
+
+    state.title = title;
+    state.year = parseInt(el.textYear.value, 10) || new Date().getFullYear();
     el.title.value = title;
     saveText();
     rebuild();
@@ -203,16 +215,30 @@
     clearTimeout(textTimer);
     textTimer = setTimeout(adoptText, 280);
   }
-  [el.textTitle, el.textYear, el.textSections, el.textLines].forEach(function (node) {
+  [el.textTitle, el.textYear, el.textSections, el.textLines, el.textMemory].forEach(function (node) {
     if (node) node.addEventListener('input', onTextInput);
   });
+  if (el.textStyle) {
+    el.textStyle.onchange = function () { adoptText(); renderAiStatus(); };
+  }
+  if (el.textNoText) {
+    el.textNoText.onchange = function () { adoptText(); };
+  }
+  if (el.textStyle) {
+    el.textStyle.innerHTML = '';
+    M.TEXT.STYLES.forEach(function (st) {
+      var o = document.createElement('option');
+      o.value = st.key; o.textContent = st.name + ' · ' + st.note;
+      el.textStyle.appendChild(o);
+    });
+  }
   if (el.btnText) el.btnText.onclick = openText;
   if (el.textDone) el.textDone.onclick = function () { adoptText(); closeText(); };
   if (el.textClose) el.textClose.onclick = closeText;
   if (el.textReset) {
     el.textReset.onclick = function () {
       delete state.texts[state.direction];
-      textFor(state.direction);
+      docFor(state.direction);
       saveText();
       openText();
       rebuild();
@@ -221,6 +247,130 @@
   if (el.textPanel) {
     el.textPanel.addEventListener('click', function (e) { if (e.target === el.textPanel) closeText(); });
   }
+
+  /* ---------------- editorial assistant ---------------- */
+  var lastIdeas = null;
+  var aiBusy = false;
+
+  async function renderAiStatus() {
+    if (!el.aiStatus) return;
+    var st = M.AI.provider.status();
+    if (!st.checked) {
+      el.aiStatus.textContent = '本地文字助手：检查中…';
+      el.aiStatus.dataset.state = 'idle';
+    } else {
+      el.aiStatus.textContent = M.AI.provider.explain();
+      el.aiStatus.dataset.state = st.ok ? 'ok' : 'off';
+      if (el.aiModel) {
+        el.aiModel.innerHTML = '';
+        (st.models || []).forEach(function (m) {
+          var o = document.createElement('option');
+          o.value = m; o.textContent = m;
+          if (m === M.AI.ollama.model()) o.selected = true;
+          el.aiModel.appendChild(o);
+        });
+        el.aiModel.hidden = !(st.models || []).length;
+      }
+    }
+    if (el.aiBtn) el.aiBtn.textContent = lastIdeas ? '再来一组灵感' : '为这组照片寻找文字灵感';
+  }
+
+  async function askIdeas() {
+    if (aiBusy) return;
+    if (!state.photos.length) { toast('先导入照片，才有得写'); return; }
+    aiBusy = true;
+    if (el.aiBtn) { el.aiBtn.disabled = true; el.aiBtn.textContent = '正在想…'; }
+    if (el.aiStatus) { el.aiStatus.textContent = '正在生成三个方向…'; el.aiStatus.dataset.state = 'busy'; }
+    try {
+      var doc = docFor(state.direction);
+      var res = await M.AI.editorial.generate({
+        photos: state.photos,
+        memory: doc.memory || '',
+        userEdited: M.TEXT.summary(doc).userEdited,
+        bookTitle: textFor(state.direction).title,
+        style: doc.style || 'poetic'
+      });
+      lastIdeas = res;
+      renderIdeas(res);
+      await renderAiStatus();
+      if (res.source === 'fallback') {
+        el.aiStatus.textContent = '本地模型没连上，这是内置模板（可以照用，也可以改）';
+        el.aiStatus.dataset.state = 'off';
+      } else {
+        var n = res.directions.length;
+        var note = n < 3 ? '只有 ' + n + ' 个方向生成成功，可以再点一次' : n + ' 个方向';
+        if (res.warnings && res.warnings.length) note += ' · ' + res.warnings[0];
+        el.aiStatus.textContent = note;
+        el.aiStatus.dataset.state = 'ok';
+      }
+    } catch (err) {
+      var code = err && err.code;
+      var msg = code === 'timeout' ? '模型超时了，可以再点一次'
+        : code === 'model' ? '这个模型不存在，去 Ollama 里换一个'
+        : code === 'offline' ? '连不上本地的 Ollama（见下面的启动说明）'
+        : 'AI 出错了：' + (err && err.message ? err.message : err);
+      el.aiStatus.textContent = msg + '（其它功能不受影响）';
+      el.aiStatus.dataset.state = 'off';
+    }
+    aiBusy = false;
+    if (el.aiBtn) { el.aiBtn.disabled = false; el.aiBtn.textContent = lastIdeas ? '再来一组灵感' : '为这组照片寻找文字灵感'; }
+  }
+
+  function renderIdeas(res) {
+    if (!el.aiIdeas) return;
+    el.aiIdeas.innerHTML = '';
+    (res.directions || []).forEach(function (d, i) {
+      var card = document.createElement('div');
+      card.className = 'idea';
+      var mood = (d.mood || []).map(function (m) { return '<span class="idea-mood">' + escapeHtml(m) + '</span>'; }).join('');
+      var chapters = (d.chapterTitles || []).slice(0, 6).map(function (t) { return escapeHtml(t); }).join(' · ');
+      var caps = (d.captions || []).slice(0, 4).map(function (c) {
+        return '<li>' + escapeHtml(typeof c === 'string' ? c : c.text) + '</li>';
+      }).join('');
+      card.innerHTML =
+        '<div class="idea-head"><span class="idea-no">' + (i + 1) + '</span>' +
+        '<b class="idea-title">' + escapeHtml(d.title) + '</b></div>' +
+        (d.subtitle ? '<p class="idea-sub">' + escapeHtml(d.subtitle) + '</p>' : '') +
+        (d.concept ? '<p class="idea-concept">' + escapeHtml(d.concept) + '</p>' : '') +
+        '<div class="idea-moods">' + mood + (d.textDensity ? '<span class="idea-mood">' + escapeHtml(d.textDensity) + '</span>' : '') + '</div>' +
+        (chapters ? '<p class="idea-chapters">' + chapters + '</p>' : '') +
+        (caps ? '<ul class="idea-caps">' + caps + '</ul>' : '');
+      var take = document.createElement('button');
+      take.className = 'btn btn-ghost btn-wide';
+      take.textContent = '用这个方向';
+      take.onclick = function () { adoptIdea(d); };
+      card.appendChild(take);
+      el.aiIdeas.appendChild(card);
+    });
+  }
+
+  async function adoptIdea(d) {
+    var doc = docFor(state.direction);
+    var r = M.TEXT.adopt(doc, d, {});
+    saveText();
+    rebuild();
+    openText();
+    toast(r.kept
+      ? '用了「' + d.title + '」· 保留了你亲手写的 ' + r.kept + ' 处'
+      : '用了「' + d.title + '」');
+  }
+
+  if (el.aiModel) {
+    el.aiModel.onchange = function () {
+      M.AI.ollama.setModel(el.aiModel.value);
+      renderAiStatus();
+    };
+  }
+  if (el.aiBtn) el.aiBtn.onclick = askIdeas;
+  if (el.aiAgain) el.aiAgain.onclick = askIdeas;
+  if (el.aiSetup) {
+    el.aiSetup.onclick = async function () {
+      var st = await M.AI.provider.check(true);
+      await renderAiStatus();
+      toast(st.ok ? '连上了：' + (M.AI.ollama.model() || '未选模型') : '还是连不上，检查 Ollama 是否在跑');
+    };
+  }
+  M.AI.provider.check().then(renderAiStatus).catch(function () {});
 
   function saveStars() {
     try {

@@ -108,18 +108,47 @@
     <div class="picker-head">
       <div>
         <h2 class="picker-title">文字</h2>
-        <p class="picker-note" id="textNote">书名、年份、章节词、每页短句都是你的。改完立刻重排。</p>
+        <p class="picker-note" id="textNote">你自己写的字永远不会被 AI 覆盖。改完立刻重排。</p>
       </div>
       <button id="textClose" class="picker-close" aria-label="关闭">✕</button>
     </div>
+
     <div class="text-body">
+      <label class="text-row text-row--block"><b>这组照片，你还记得什么？<span>一两句就够。它会作为你的记忆单独保存，优先级最高。</span></b>
+        <textarea id="textMemory" rows="2" spellcheck="false" placeholder="例：那天下午很冷，我们在码头等最后一班船。"></textarea>
+      </label>
+
+      <div class="text-row text-row--inline">
+        <b>文字风格</b>
+        <select id="textStyle" class="text-select"></select>
+        <label class="text-check"><input type="checkbox" id="textNoText"> 不要内容文字</label>
+      </div>
+
+      <div class="ai-block">
+        <div class="ai-head">
+          <button id="aiBtn" class="btn btn-primary">为这组照片寻找文字灵感</button>
+          <button id="aiAgain" class="btn btn-ghost" hidden>再来一组</button>
+          <button id="aiSetup" class="btn btn-ghost">检查连接</button>
+          <select id="aiModel" class="text-select text-select--sm" hidden aria-label="本地模型"></select>
+        </div>
+        <p id="aiStatus" class="ai-status" data-state="idle">本地文字助手：检查中…</p>
+        <div id="aiIdeas" class="ai-ideas"></div>
+        <details class="ai-help">
+          <summary>本地模型怎么开</summary>
+          <p>需要本机装 Ollama，并允许这个页面访问它：</p>
+          <code>OLLAMA_ORIGINS=* ollama serve</code>
+          <p>然后 <code>ollama pull qwen2.5:7b</code>（任意会写中文的模型都行）。没有模型时，上面的按钮会给内置模板，其它功能照常。</p>
+        </details>
+      </div>
+
       <label class="text-row"><b>书名</b><input id="textTitle" type="text" spellcheck="false"></label>
       <label class="text-row"><b>年份</b><input id="textYear" type="number" min="1900" max="2100" step="1"></label>
-      <label class="text-row"><b>章节词</b><input id="textSections" type="text" spellcheck="false" placeholder="用逗号分开：朝，窗，影"></label>
+      <label class="text-row"><b>章节词</b><input id="textSections" type="text" spellcheck="false" placeholder="用逗号分开：光，风，途中"></label>
       <label class="text-row text-row--block"><b>每页短句<span>一行一句，按顺序用在页面上</span></b>
-        <textarea id="textLines" rows="9" spellcheck="false"></textarea>
+        <textarea id="textLines" rows="6" spellcheck="false"></textarea>
       </label>
     </div>
+
     <div class="text-foot">
       <button id="textReset" class="btn btn-ghost">恢复本方向的默认文字</button>
       <button id="textDone" class="btn btn-primary">完成</button>
@@ -218,9 +247,15 @@
 <script src="js/engine.js"></script>
 <script src="js/spread.js"></script>
 <script src="js/compose.js"></script>
+<script src="js/text.js"></script>
 <script src="js/render.js"></script>
 <script src="js/export.js"></script>
 <script src="js/backup.js"></script>
+<script src="js/ai/schemas.js"></script>
+<script src="js/ai/prompts.js"></script>
+<script src="js/ai/ollama.js"></script>
+<script src="js/ai/provider.js"></script>
+<script src="js/ai/editorial.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
