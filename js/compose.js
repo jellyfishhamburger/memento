@@ -535,11 +535,16 @@ window.MEM = window.MEM || {};
       crossPage(a, b, photos[0], 0, w, 0, h, 'fold');
       a.texts.push(txt({ x: cx(0), y: h + 40, w: cw(6), size: 11, track: 3, color: PAPER.muted, text: o.plate + ' — ' + o.title }));
       var rest = photos.slice(1, 13);
-      wall(a, rest.slice(0, 6), {
+      // split what exists across both pages: a fixed 6/6 split leaves page b blank
+      // whenever the unit got fewer than seven photos
+      var half = Math.ceil(rest.length / 2);
+      wall(a, rest.slice(0, half), {
         rows: [[4, 4, 4], [4, 4, 4]], shapes: [[1.15, 0.95, 1.35], [1.35, 1.0, 1.15]], indent: [0, 0]
       }, { y: h + 96 });
-      wall(b, rest.slice(6), {
-        rows: [[4, 4, 4], [4, 4, 4]], shapes: [[1.35, 1.0, 1.15], [1.0, 1.35, 0.95]], indent: [0, 1]
+      var bRows = Math.max(1, Math.ceil((rest.length - half) / 3));
+      wall(b, rest.slice(half), {
+        rows: bRows === 1 ? [[4, 4, 4]] : [[4, 4, 4], [4, 4, 4]],
+        shapes: [[1.35, 1.0, 1.15], [1.0, 1.35, 0.95]], indent: [0, 1]
       }, { y: h + 96 });
       return [a, b];
     }
@@ -598,20 +603,56 @@ window.MEM = window.MEM || {};
     return [pg];
   }
 
-  /* slot geometry without a photo, for allocation */
+  /* which photo slot of a hand-drawn comp is a 大位, by the role the build
+     declares. A comp with no entry (or a shorter list) has no 大位: its wall /
+     strip / pause frames are small slots, and a star must not be pulled there. */
+  var BUILD_SLOTS = {
+    'pan-fold': ['fold'],
+    'pan-inset': ['fold'],
+    'pan-diptych': ['bleed', 'bleed'],
+    'pan-hero-right': ['bleed'],
+    'pan-wall': ['fold'],
+    'z-open': ['hero'],
+    'z-hero': ['bleed'],
+    'z-hero-wall': ['bleed'],
+    'z-panorama': ['fold'],
+    'z-details': [],
+    'z-sequence': [],
+    'z-pause': [],
+    'z-end': [],
+    'z-wall': [],
+    'z-wall-air': [],
+    'ed-dense': []
+  };
+
+  /* 大位 = a frame the layout itself calls a hero, or one that runs across the fold */
+  function isBigRole(role) { return role === 'hero' || role === 'bleed' || role === 'fold'; }
+
+  /* slot geometry without a photo, for allocation.
+     Each slot keeps `i` — the photo index the layout actually reads (`op.i`,
+     not the position in this array) — plus the role it will be drawn with. */
   function slotGeom(key, n) {
     var c = COMP[key];
     if (c.build) {
-      // comps that draw themselves: a nominal shape cycle, hero first
+      // comps that draw themselves: nominal shapes, roles from BUILD_SLOTS
       var cycle = [1.42, 1.0, 0.72, 1.0, 1.5, 0.72, 1.0, 1.42, 1.0, 0.72];
+      var roles = BUILD_SLOTS[key] || [];
       var out = [];
-      for (var i = 0; i < n; i++) out.push({ ar: i === 0 ? 0.75 : cycle[i % cycle.length], area: i === 0 ? 900000 : 200000 - i * 1000, i: i });
+      for (var i = 0; i < n; i++) {
+        var role = roles[i] || 'detail';
+        var ar = i === 0 ? 0.75 : cycle[i % cycle.length], area = 200000 - i * 1000;
+        if (role === 'fold') area = PW * PH * 2;          // one photo across both pages
+        else if (role === 'bleed') { ar = 0.75; area = PW * PH; }
+        else if (role === 'hero') { area = PW * PH * 0.32; }
+        out.push({ ar: ar, area: area, i: i, role: role, big: isBigRole(role) });
+      }
       return out;
     }
-    var geom = c.ops.filter(function (o) { return o.t === 'photo' || o.t === 'bleed'; }).map(function (op, i) {
+    var geom = c.ops.filter(function (o) { return o.t === 'photo' || o.t === 'bleed'; }).map(function (op, k) {
       var w = op.t === 'bleed' ? (op.w || PW) : cw(op.cols || 6);
       var h = op.t === 'bleed' ? (op.h || PH) : (op.h || w / op.ar);
-      return { ar: w / h, area: w * h, i: i };
+      var role = op.role || 'detail';
+      return { ar: w / h, area: w * h, i: op.i == null ? k : op.i, role: role, big: isBigRole(role) };
     });
     return geom;
   }
@@ -719,9 +760,10 @@ window.MEM = window.MEM || {};
       line: opt.line || '', meta: opt.meta || '', plate: '01'
     };
 
-    // 1. who is the cover
+    // 1. who is the cover: a ★ wins it, then visual weight
     var ranked = list.slice().sort(function (a, b) { return (b.hero || 0) - (a.hero || 0); });
-    var coverPhoto = opt.coverPhoto || ranked[0];
+    var starred = ranked.filter(function (p) { return p.starred; });
+    var coverPhoto = opt.coverPhoto || starred[0] || ranked[0];
 
     // 2. sequence the inner units
     var units = scheme.slice();
@@ -737,34 +779,48 @@ window.MEM = window.MEM || {};
     units = chosen.keys;
     var want = chosen.want;
 
-    // 4. assign: heroes first, then details by colour kinship and aspect fit
+    // 4. assign: 大位 first, and a ★ is only spent there
     var pool = rest.slice();
     var assigned = [];
-    var heroUnits = [];
+    var bigSlots = [];
     units.forEach(function (k, i) {
       var g = slotGeom(k, want[i]);
-      g.sort(function (a, b) { return b.area - a.area; });
       assigned.push({ key: k, geom: g, photos: new Array(want[i]).fill(null) });
-      heroUnits.push({ u: i, area: g[0].area });
+      // every slot the layout will actually draw (op.i within the photos we are giving it)
+      var live = g.filter(function (s) { return s.i >= 0 && s.i < want[i]; });
+      var big = live.filter(function (s) { return s.big; });
+      if (big.length) {
+        big.forEach(function (s) { bigSlots.push({ u: i, i: s.i, ar: s.ar, area: s.area, role: s.role, star: true }); });
+      } else if (live.length) {
+        // no 大位 in this comp: keep choosing its strongest frame (small slots ignore ★)
+        var top = live.slice().sort(function (a, b) { return b.area - a.area; })[0];
+        bigSlots.push({ u: i, i: top.i, ar: top.ar, area: top.area, role: top.role, star: false });
+      }
     });
 
-    // heroes: the biggest slot of each unit takes the best remaining photo for its shape
-    heroUnits.sort(function (a, b) { return b.area - a.area; });
-    heroUnits.forEach(function (hu) {
-      var u = assigned[hu.u];
+    function pickBig(ar, useStar) {
       var best = null, bs = -1e9;
       pool.forEach(function (p) {
-        var s = (p.hero || 0) * 2.2 - arFit(p, u.geom[0].ar) * 1.6;
+        // a star outranks hero weight and crop worry, but only for 大位
+        var s = (p.hero || 0) * 2.2 - arFit(p, ar) * 1.6 + (useStar && p.starred ? 4 : 0);
         if (s > bs) { bs = s; best = p; }
       });
+      return best;
+    }
+
+    // biggest 大位 first: the cover-scale frames and the cross-page units get their pick
+    bigSlots.sort(function (a, b) { return b.area - a.area; });
+    bigSlots.forEach(function (sl) {
+      if (assigned[sl.u].photos[sl.i]) return;
+      var best = pickBig(sl.ar, sl.star);
       if (!best) return;
-      u.photos[0] = best;
+      assigned[sl.u].photos[sl.i] = best;
       pool.splice(pool.indexOf(best), 1);
     });
 
-    // details: fill each unit, preferring the shape that fits and the colour of its hero
+    // details: fill every empty index, preferring the shape that fits and the colour of its hero
     assigned.forEach(function (u) {
-      for (var k = 1; k < u.photos.length; k++) {
+      for (var k = 0; k < u.photos.length; k++) {
         if (u.photos[k]) continue;
         var geom = u.geom[k] || u.geom[u.geom.length - 1];
         var anchor = u.photos[0];

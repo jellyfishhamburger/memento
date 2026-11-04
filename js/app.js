@@ -70,6 +70,19 @@
   }
 
   var LS_PHOTOS = 'memento.photos.v1';
+  var LS_STARS = 'memento.stars.v1';
+  function saveStars() {
+    try {
+      localStorage.setItem(LS_STARS, JSON.stringify(state.photos.filter(function (x) { return x.starred; }).map(function (x) { return x.name || ''; })));
+    } catch (e) { /* 配额满了就算了 */ }
+  }
+  function loadSavedStars() {
+    try {
+      var raw = localStorage.getItem(LS_STARS);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
   function savePhotos() {
     try {
       localStorage.setItem(LS_PHOTOS, JSON.stringify(state.photos.map(function (p) {
@@ -108,7 +121,7 @@
       star.onclick = function (e) {
         e.stopPropagation();
         p.starred = !p.starred;
-        try { localStorage.setItem('memento.stars.v1', JSON.stringify(state.photos.filter(function (x) { return x.starred; }).map(function (x) { return x.name || ''; }))); } catch (err) {}
+        saveStars();
         buildTray(); rebuild();
       };
       wrap.appendChild(img); wrap.appendChild(star);
@@ -609,8 +622,10 @@
   if (saved.length) {
     setStat('正在恢复上次的 ' + saved.length + ' 张…');
     (async function () {
+      var stars = loadSavedStars();
       for (var i = 0; i < saved.length; i++) {
-        await addUrl(saved[i].url, saved[i].name);
+        var rec = await addUrl(saved[i].url, saved[i].name);
+        if (rec && stars.indexOf(rec.name || '') >= 0) rec.starred = true;
       }
       buildTray(); rebuild();
     })();
