@@ -318,6 +318,13 @@ window.MEM = window.MEM || {};
       var w = Math.min(g.contentW, h * (p.ar || 1));
       h = w / (p.ar || 1);
       var place = ctx.rand();
+      var hint = ctx.hint && ctx.hint.pos;
+      // S4-B: if the model saw the subject on one side, keep the print on that
+      // side so the page does not fight the photograph. Falls back to the old
+      // random placement when there is no hint.
+      if (hint === 'left') place = 0.1;
+      else if (hint === 'right') place = 0.9;
+      else if (hint === 'center' || hint === 'full') place = 0.5;
       var x = place < 0.34 ? g.x(0) : place < 0.67 ? (PW - w) / 2 : PW - g.outer - w;
       var y = g.top + (ctx.rand() < 0.25 ? (g.bottom - g.top - h) * 0.62 : (g.bottom - g.top - h) * 0.28);
       if (d.alignment === 'bleed' && ctx.rand() < 0.4) {
@@ -505,6 +512,8 @@ window.MEM = window.MEM || {};
   /* ---------------- 4. the book ---------------- */
   function compose(photos, opt) {
     opt = opt || {};
+    var hints = opt.hints || null;      // S4-B: per-photo observations, optional
+    var curChunkIndex = 0;
     var list = photos.filter(function (p) { return p && p.img; });
     if (!list.length) return { pages: [], units: [], direction: null, profile: null, log: [] };
 
@@ -566,6 +575,11 @@ window.MEM = window.MEM || {};
       if (!chunk.length) break;
 
       var fam = pickFamily(dir, chunk.length, prevFamily, rand);
+      var hint = hints ? (hints[chunk[0].name] || hints[chunk[0].id]) : null;
+      if (hint && chunk.length === 1 && hint.crowd === 'busy' && dir.temperament !== 'quiet') {
+        // a crowded frame alone on a page loses its crowd: keep it as a strip
+        fam = 'strip';
+      }
       // the opening page may be type-led on purpose; after that, keep them apart
       if (fam === 'type-led' && pi > 0 && pi - lastType < 3) fam = chunk.length > 1 ? 'diptych' : 'single';
       if (fam === 'type-led') lastType = pi;
@@ -577,8 +591,10 @@ window.MEM = window.MEM || {};
       if (ctxShouldPause(dir, pi, rand) && chunk.length > 2) {
         fam = 'single'; fn = FAMILIES.single;
       }
+      curChunkIndex = pi;
       var built = fn(chunk, dir, g, {
         rand: rand,
+        hint: hints ? (hints[chunk[0].name] || hints[chunk[0].id] || null) : null,
         line: lineQueue.length ? lineQueue[0] : '',
         head: (opt.head || ''),
         plate: 'PLATE ' + (pi + 1 < 10 ? '0' : '') + (pi + 1),

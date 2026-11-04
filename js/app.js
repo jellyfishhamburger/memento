@@ -478,6 +478,7 @@
           detail: a.detail == null ? 0.2 : a.detail,
           contrast: a.contrast == null ? null : a.contrast,
           focus: a.focus == null ? null : a.focus,
+          takenAt: s.takenAt || null,
           starred: !!s.starred
         });
       };
@@ -488,6 +489,9 @@
 
   /* File → analyzed, thumbnailed, written to IndexedDB */
   async function importFile(file) {
+    // EXIF must be read from the raw file: everything we keep is re-encoded
+    // WebP, which no longer carries the original timestamp.
+    var taken = (M.TL && M.TL.timeOf) ? await M.TL.timeOf({ blob: file }) : null;
     var tmp = URL.createObjectURL(file);
     var img;
     try { img = await loadImage(tmp); }
@@ -507,6 +511,7 @@
       createdAt: file.lastModified || Date.now(),
       importedAt: Date.now(),
       starred: false,
+      takenAt: taken || null,
       blob: preview.blob,
       thumbnail: thumb.blob,
       format: preview.format,
