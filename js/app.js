@@ -443,9 +443,9 @@
       star.onclick = function (e) {
         e.stopPropagation();
         p.starred = !p.starred;
-        saveStars();
-        M.STORE.setStarred(photo.id, !!photo.starred).catch(function () {});
-        buildTray(); rebuild();
+        // this belongs to the open book, so it must not leak into other books
+        if (project && M.STORE.setBookHero) M.STORE.setBookHero(project.id, p.id, !!p.starred);
+        buildTray(); rebuild(); scheduleSave();
       };
       wrap.appendChild(img); wrap.appendChild(star);
       el.tray.appendChild(wrap);
@@ -748,6 +748,13 @@
           },
           currentVersionId: v.id
         });
+      })
+      .then(function () {
+        var pid = project && project.id;
+        if (pid && M.STORE.setBookPhotos && snap.photoIds.length && photoSetDirty) {
+          photoSetDirty = false;
+          return M.STORE.setBookPhotos(pid, snap.photoIds).catch(function () {});
+        }
       })
       .then(function () {
         if (mySeq !== saveSeq) return;
@@ -1740,6 +1747,7 @@
     await M.STORE.setPref('lastProjectId', id);
     state.texts = pr.texts && Object.keys(pr.texts).length ? JSON.parse(JSON.stringify(pr.texts)) : {};
     state.direction = pr.designDirection || 'zine';
+    if (pr.title) { state.title = pr.title; if (el.title) el.title.value = state.title; }
     var versions = await M.STORE.listVersions(id);
     var draft = versions.filter(function (v) { return v.isAutoSaved; })[0];
     if (draft && draft.snapshot && (draft.snapshot.pages || []).length) {
@@ -1750,6 +1758,8 @@
       });
       buildRail(); buildTray(); rebuild();
     }
+    await applyBookHeroes();
+    buildTray();
     setSaveState('saved', '已保存');
     closeLibrary();
     toast('打开：' + (pr.title || '未命名'));
@@ -1773,6 +1783,55 @@
     el.zinePanel.hidden = true; el.empty.hidden = false;
     closeLibrary();
     toast('新建了一本，导入照片开始排');
+  }
+
+  /* P3: a book is created from a selection, and that selection becomes the
+     book's own relation (bookPhotos) — collections are not consulted again. */
+  async function createBook(kind, ids) {
+    ids = (ids || []).slice();
+    if (!ids.length) return null;
+    await flushSave();
+    var k = kind === 'memory' ? 'memory' : 'social';
+    if (k === 'social' && ids.length > 9) ids = ids.slice(0, 9);
+    var d = new Date();
+    var pr = await M.STORE.createProject({
+      kind: k,
+      title: k === 'memory' ? ((d.getMonth() + 1) + '月' + d.getDate() + '日 · 回忆册') : '未命名的一卷',
+      designDirection: state.direction,
+      settings: { mode: state.mode, scheme: state.scheme, count: k === 'memory' ? 0 : state.count, seed: state.seed, locked: {}, photoIds: ids },
+      texts: {}
+    });
+    await M.STORE.setBookPhotos(pr.id, ids);
+    project = pr;
+    state.title = pr.title;
+    if (el.title) el.title.value = pr.title;
+    await M.STORE.setPref('lastProjectId', pr.id);
+    state.photos = ids.map(function (id) {
+      return state.library.filter(function (p) { return p.id === id; })[0];
+    }).filter(Boolean);
+    state.count = k === 'memory' ? 0 : Math.min(11, Math.max(9, ids.length));
+    photoSetDirty = false;
+    state.locked = {};
+    state.zine = null;
+    await applyBookHeroes();
+    buildRail(); buildTray(); rebuild();
+    closeLibrary();
+    setSaveState('saved', '已保存');
+    toast('做好了「' + pr.title + '」· ' + state.photos.length + ' 张');
+    return pr;
+  }
+
+  /* the ★ in the tray is this book's hero now, not a global photo flag */
+  async function applyBookHeroes() {
+    if (!project || !M.STORE.listBookPhotos) return;
+    var links = await M.STORE.listBookPhotos(project.id);
+    var hero = {};
+    links.forEach(function (l) { if (l.hero) hero[l.photoId] = 1; });
+    state.photos.forEach(function (p) { p.starred = !!hero[p.id]; });
+    state.library.forEach(function (p) {
+      if (state.photos.indexOf(p) >= 0) return;
+      p.starred = false;
+    });
   }
 
   async function renameProject(pr) {
@@ -1840,12 +1899,17 @@
 
   el.btnLibrary.onclick = openLibrary;
   el.libClose.onclick = closeLibrary;
-  if (el.libNewMem) el.libNewMem.onclick = function () { newProject('memory'); };
-  if (el.libNewSocial) el.libNewSocial.onclick = function () { newProject('social'); };
+  if (el.libNewMem) el.libNewMem.onclick = function () {
+    if (M.NEWBOOK) M.NEWBOOK.open('memory'); else newProject('memory');
+  };
+  if (el.libNewSocial) el.libNewSocial.onclick = function () {
+    if (M.NEWBOOK) M.NEWBOOK.open('social'); else newProject('social');
+  };
   el.library.addEventListener('click', function (e) { if (e.target === el.library) closeLibrary(); });
 
   /* ---------------- photo library (the whole shelf) ---------------- */
   var plibFilter = 'all';
+  var photoSetDirty = false;      // did the user change this book's photos?
 
   async function openPhotoLibrary() {
     el.photoLib.hidden = false;
@@ -1855,6 +1919,7 @@
 
   var pickTimer = null;
   function pickChanged() {
+    photoSetDirty = true;
     buildTray();
     clearTimeout(pickTimer);
     pickTimer = setTimeout(function () { rebuild(); scheduleSave(); }, 180);
@@ -1997,6 +2062,7 @@
   var btnColls = document.getElementById('btnColls');
   if (btnColls && M.COLL) btnColls.onclick = function () { M.COLL.open(); };
   if (M.COLL) M.COLL.init();
+  if (M.NEWBOOK) M.NEWBOOK.init();
   el.btnPhotos.onclick = openPhotoLibrary;
   if (el.btnPickPhotos) el.btnPickPhotos.onclick = function () { plibFilter = 'out'; openPhotoLibrary(); };
   el.plibClose.onclick = closePhotoLibrary;
@@ -2067,7 +2133,8 @@
     if (project.texts && Object.keys(project.texts).length) {
       state.texts = JSON.parse(JSON.stringify(project.texts));
     }
-    state.title = textFor(state.direction).title;
+    state.title = (project.title && project.title !== '未命名的一卷')
+      ? project.title : textFor(state.direction).title;
     state.year = textFor(state.direction).year;
     if (el.title) el.title.value = state.title;
 
@@ -2085,9 +2152,18 @@
       BOOT.push('draft applied frames=' + state.zine.pages.reduce(function (a, p) { return a + p.frames.length; }, 0));
       setSaveState('saved', '已恢复上次编辑');
     } else if (state.library.length) {
-      BOOT.push('from library');
-      state.photos = state.library.slice();
+      var own = ((project.settings || {}).photoIds) || [];
+      BOOT.push('from library own=' + own.length);
+      state.photos = own.length
+        ? state.library.filter(function (p) { return own.indexOf(p.id) >= 0; })
+        : state.library.slice();
       state.coverPhoto = null;
+      await M.STORE.listBookPhotos(project.id).then(function (links) {
+        if (links.length && !own.length) {
+          var ids = links.map(function (l) { return l.photoId; });
+          state.photos = state.library.filter(function (p) { return ids.indexOf(p.id) >= 0; });
+        }
+      });
       buildRail(); buildTray(); rebuild();
     }
 
@@ -2166,6 +2242,7 @@
     versionPhotoIds: versionPhotoIds,
     openVersions: openVersions, saveNewVersion: saveNewVersion, restoreVersion: restoreVersion,
     project: function () { return project; }, loadLibrary: loadLibrary,
+    createBook: createBook, applyBookHeroes: applyBookHeroes,
     art: function () { return M.ART; },
     setEngine: function (e) { state.engine = e; buildRail(); rebuild(); },
     engine: function () { return state.engine; },

@@ -248,6 +248,34 @@
 </div>
 
 
+
+<div id="newbook" class="saved" hidden>
+  <div class="saved-card nbcard">
+    <div class="saved-head">
+      <div>
+        <h2 class="saved-title">新建一本</h2>
+        <p class="saved-note" id="nbHint">选照片 → 做成回忆册或九图作品。可以跨集合挑。</p>
+      </div>
+      <button id="nbClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="nb-body">
+      <aside id="nbColls" class="nb-colls"></aside>
+      <section class="nb-main">
+        <div class="nb-tools">
+          <button id="nbAll" class="btn btn-ghost btn-sm">全选本组</button>
+          <button id="nbNone" class="btn btn-ghost btn-sm">全不选</button>
+          <span id="nbCount" class="lib-quota">已选 0 张</span>
+        </div>
+        <div id="nbPhotos" class="nb-grid"></div>
+      </section>
+    </div>
+    <div class="nb-foot">
+      <button id="nbMemory" class="btn btn-ghost">做成回忆册</button>
+      <button id="nbSocial" class="btn btn-primary">做成九图作品</button>
+    </div>
+  </div>
+</div>
+
 <div id="colls" class="saved" hidden>
   <div class="saved-card collcard">
     <div class="saved-head">
@@ -314,6 +342,7 @@
 <script src="js/ai/provider.js"></script>
 <script src="js/ai/editorial.js"></script>
 <script src="js/collections.js"></script>
+<script src="js/newbook.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

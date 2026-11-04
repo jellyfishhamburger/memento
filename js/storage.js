@@ -382,12 +382,12 @@ window.MEM = window.MEM || {};
       var key = collectionId + ':' + photoId;
       return tx(['collectionPhotos'], 'readwrite').then(function (t) {
         var st = t.objectStore('collectionPhotos');
-        return wrap(st.get(key)).then(function (l) {
-          if (!l) return false;
-          l.starred = !!starred;
-          st.put(l);
-          return done(t).then(function () { return true; });
-        });
+        var req = st.get(key);
+        req.onsuccess = function () {
+          var l = req.result;
+          if (l) { l.starred = !!starred; st.put(l); }
+        };
+        return done(t).then(function () { return true; });
       });
     },
     collectionsOfPhoto: function (photoId) {
@@ -472,10 +472,11 @@ window.MEM = window.MEM || {};
           var keep = {};
           ids.forEach(function (pid, i) {
             keep[pid] = 1;
-            var prev = existing.filter(function (l) { return l.photoId === pid; })[0] || {};
+            var prev = existing.filter(function (l) { return l.photoId === pid; })[0];
+            if (prev) return;                 // keep hero/order untouched on sync
             st.put({
               id: bookId + ':' + pid, bookId: bookId, photoId: pid,
-              hero: !!prev.hero, order: i, addedAt: prev.addedAt || Date.now()
+              hero: false, order: i, addedAt: Date.now()
             });
           });
           existing.forEach(function (l) {
@@ -494,12 +495,12 @@ window.MEM = window.MEM || {};
       var key = bookId + ':' + photoId;
       return tx(['bookPhotos'], 'readwrite').then(function (t) {
         var st = t.objectStore('bookPhotos');
-        return wrap(st.get(key)).then(function (l) {
-          if (!l) return false;
-          l.hero = !!hero;
-          st.put(l);
-          return done(t).then(function () { return true; });
-        });
+        var req = st.get(key);
+        req.onsuccess = function () {
+          var l = req.result;
+          if (l) { l.hero = !!hero; st.put(l); }
+        };
+        return done(t).then(function () { return true; });
       });
     },
     /* which books use this photo — relation table first, old snapshots as fallback */
