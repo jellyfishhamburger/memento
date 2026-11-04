@@ -49,6 +49,7 @@
     Array.prototype.forEach.call(el.pageTargets.children, function (b) {
       b.setAttribute('aria-pressed', String(Number(b.dataset.pages) === state.pageTarget));
     });
+    el.pageNote.textContent = '九页 = 一张封面 + 八个跨页，导出发朋友圈就是九张方图。';
     el.pageNote.hidden = state.pageTarget === 0;
 
     Array.prototype.forEach.call(el.fills.children, function (b) {
@@ -226,6 +227,11 @@
     });
     state.pages = res.pages;
     setStat(photos.length + ' 张 · ' + res.pages.length + ' 页');
+    if (state.pageTarget && res.pages.length !== state.pageTarget) {
+      el.pageNote.textContent = '这组照片排不满 ' + state.pageTarget + ' 页，现在是 ' +
+        res.pages.length + ' 页（每页最多 6 张）。';
+      el.pageNote.hidden = false;
+    }
 
     el.pages.innerHTML = '';
 
