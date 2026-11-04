@@ -247,8 +247,11 @@ window.MEM = window.MEM || {};
     var sw, sh;
     if (pw / ph > target) { sh = ph; sw = ph * target; } else { sw = pw; sh = pw / target; }
     var fx = photo.focal ? photo.focal.x : .5, fy = photo.focal ? photo.focal.y : .5;
+    // keep the focal point a little above the middle of the crop: a face needs air
+    // above it, and centring on a focal point at the chest is how heads get cut
+    var bias = (sh < ph - 0.5) ? 0.44 : 0.5;
     var sx = Math.max(0, Math.min(pw - sw, fx * pw - sw / 2));
-    var sy = Math.max(0, Math.min(ph - sh, fy * ph - sh / 2));
+    var sy = Math.max(0, Math.min(ph - sh, fy * ph - sh * bias));
     return { sx: sx, sy: sy, sw: sw, sh: sh };
   }
   M.cropFor = cropFor;

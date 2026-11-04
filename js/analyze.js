@@ -85,23 +85,29 @@ window.MEM = window.MEM || {};
             grid[cell] += mag;
           }
         }
-        var mean = 0, sumG = 0;
+        var mean = 0;
         for (var gi = 0; gi < grid.length; gi++) { grid[gi] /= n / grid.length; mean += grid[gi]; }
         mean /= grid.length;
-        // centre bias + contrast above the mean
-        var best = -1, bestI = 5;
+
+        // Score every cell, then take the HIGHEST cell that is nearly as busy as the
+        // busiest one: on a portrait the head is the top of the subject, and a crop
+        // centred on the chest is what cuts faces off.
+        var scored = [];
+        var peakScore = -1;
         for (var gy2 = 0; gy2 < GY; gy2++) {
           for (var gx2 = 0; gx2 < GX; gx2++) {
             var ci = gy2 * GX + gx2;
             var cx = (gx2 + .5) / GX, cy = (gy2 + .5) / GY;
             var dist = Math.hypot(cx - .5, cy - .5) / .707;
-            var score = (grid[ci] + mean * .3) * (1 - .28 * dist);
-            if (score > best) { best = score; bestI = ci; }
+            var sc = (grid[ci] + mean * .3) * (1 - .18 * dist);
+            scored.push({ x: cx, y: cy, s: sc });
+            if (sc > peakScore) peakScore = sc;
           }
         }
-        var fx = ((bestI % GX) + .5) / GX;
-        var fy = (Math.floor(bestI / GX) + .5) / GY;
-        base.focal = { x: clamp(fx, .18, .82), y: clamp(fy, .18, .82) };
+        var cands = scored.filter(function (c) { return c.s >= peakScore * 0.72; });
+        cands.sort(function (a, b) { return (a.y - b.y) || (b.s - a.s); });
+        var pick = cands[0] || scored[5];
+        base.focal = { x: clamp(pick.x, .18, .82), y: clamp(pick.y, .12, .82) };
         base.detail = clamp(mean * 3.2, 0, 1);
 
         // ---- contrast ----

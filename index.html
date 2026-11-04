@@ -86,6 +86,7 @@
       </div>
     </div>
     <div id="pages" class="pages" hidden></div>
+    <p id="stageHint" class="stage-hint" hidden>点页面里的照片：换图 / 删图　·　点页面空白：放大看</p>
     <div id="gridPanel" class="grid-panel" hidden>
       <div class="grid-head">
         <h1 class="grid-title">九宫格</h1>
@@ -102,6 +103,19 @@
     </div>
   </section>
 </main>
+
+<div id="picker" class="picker" hidden>
+  <div class="picker-card" role="dialog" aria-label="换一张">
+    <div class="picker-head" id="pickerHead">
+      <div>
+        <h2 id="pickerTitle" class="picker-title">换一张</h2>
+        <p id="pickerNote" class="picker-note"></p>
+      </div>
+      <button id="pickerClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div id="pickerGrid" class="picker-grid"></div>
+  </div>
+</div>
 
 <div id="lightbox" class="lightbox" hidden>
   <button class="lb-close" id="lbClose" aria-label="关闭">✕</button>

@@ -4,7 +4,7 @@
   var M = window.MEM;
 
   var state = {
-    photos: [], pages: [], grid: null,
+    photos: [], pages: [], grid: null, book: null,
     mode: 'book', style: 'editorial', plan: 'hero', format: 'portrait', layout: 'paper',
     fill: 'mosaic', pageTarget: 0, excluded: {}, seed: 11, title: '十一月的海',
     year: new Date().getFullYear(), busy: false
@@ -25,6 +25,9 @@
     btnShuffle: $('#btnShuffle'), btnPick: $('#btnPick'), btnDemo: $('#btnDemo'),
     lightbox: $('#lightbox'), lbStage: $('#lbStage'), lbCount: $('#lbCount'),
     lbPrev: $('#lbPrev'), lbNext: $('#lbNext'), lbClose: $('#lbClose'),
+    picker: $('#picker'), pickerGrid: $('#pickerGrid'), pickerTitle: $('#pickerTitle'),
+    pickerNote: $('#pickerNote'), pickerClose: $('#pickerClose'),
+    stageHint: $('#stageHint'),
     toast: $('#toast')
   };
 
@@ -125,12 +128,9 @@
       var img = document.createElement('img');
       img.src = p.url; img.alt = p.name || '';
       img.loading = 'lazy';
-      img.dataset.off = state.excluded[p.id] ? '1' : '0';
-      img.title = (p.name || '') + ' — 点一下收起 / 放回';
-      img.onclick = function () {
-        state.excluded[p.id] = !state.excluded[p.id];
-        buildTray(); rebuild();
-      };
+      img.dataset.off = '0';
+      img.title = (p.name || '') + ' — 点一下删掉（可撤销）';
+      img.onclick = function () { deletePhoto(p); };
       el.tray.appendChild(img);
     });
   }
@@ -200,6 +200,7 @@
     var photos = state.photos.filter(function (p) { return !state.excluded[p.id]; });
     if (!photos.length) {
       el.pages.hidden = true; el.empty.hidden = false; el.gridPanel.hidden = true;
+      el.stageHint.hidden = true;
       el.btnPNG.disabled = true; el.btnPDF.disabled = true; el.btnTall.disabled = true;
       el.btnShuffle.disabled = true;
       return;
@@ -225,6 +226,7 @@
       seed: state.seed, title: state.title || '未命名的一卷', year: state.year,
       pages: state.pageTarget || 0
     });
+    state.book = res;
     state.pages = res.pages;
     setStat(photos.length + ' 张 · ' + res.pages.length + ' 页');
     if (state.pageTarget && res.pages.length !== state.pageTarget) {
@@ -232,7 +234,13 @@
         res.pages.length + ' 页（每页最多 6 张）。';
       el.pageNote.hidden = false;
     }
+    paintBook();
+  }
 
+  /* paints the pages we already have — a swap must not re-lay-out the book */
+  function paintBook() {
+    var res = state.book;
+    if (!res || !res.pages.length) return;
     el.pages.innerHTML = '';
 
     if (solo !== null) {
@@ -254,7 +262,9 @@
       var btn = document.createElement('button');
       btn.className = 'page-btn'; btn.type = 'button';
       btn.setAttribute('aria-label', '放大第 ' + (i + 1) + ' 页');
-      btn.appendChild(M.renderPage(page, scale));
+      btn.appendChild(M.renderPage(page, scale, {
+        frameClick: function (fi) { openEditor(i, fi); }
+      }));
       btn.onclick = function () { openLightbox(i); };
       var lab = document.createElement('div');
       lab.className = 'page-label';
@@ -262,6 +272,108 @@
         (i === 0 ? '封面' : sceneName(page));
       slot.appendChild(btn); slot.appendChild(lab);
       el.pages.appendChild(slot);
+    });
+    el.stageHint.hidden = false;
+  }
+
+  /* ---------------- swap / delete ---------------- */
+  var editTarget = null;
+
+  function arLoss(photo, slotAR) {
+    return Math.abs(Math.log((photo.ar || 1) / slotAR));
+  }
+
+  function frameUsage() {
+    var map = {};
+    state.pages.forEach(function (p, pj) {
+      p.frames.forEach(function (f) { map[f.photo.id] = pj; });
+    });
+    return map;
+  }
+
+  function openEditor(pi, fi) {
+    var page = state.pages[pi];
+    if (!page || !page.frames[fi]) return;
+    var frame = page.frames[fi];
+    editTarget = { pi: pi, fi: fi };
+    var slotAR = (frame.w - frame.pad * 2) / (frame.h - frame.pad * 2);
+    var cur = frame.photo;
+    var usage = frameUsage();
+
+    var cands = state.photos.filter(function (p) { return p !== cur; });
+    cands.sort(function (a, b) { return arLoss(a, slotAR) - arLoss(b, slotAR); });
+    // flag only the three worst crops: warning on half the library is noise
+    var lossList = cands.map(function (p) { return arLoss(p, slotAR); }).sort(function (a, b) { return b - a; });
+    var cutLine = lossList.length > 3 ? lossList[2] : Infinity;
+
+    el.pickerTitle.textContent = (pi === 0 ? '封面' : '第 ' + pi + ' 页') + ' · 第 ' + (fi + 1) + ' 张';
+    el.pickerNote.textContent = '点一张就换进来：没在用的直接替换；已经在别的页的，跟那一张互换位置。越靠前裁切越少。';
+    el.pickerGrid.innerHTML = '';
+    cands.forEach(function (p) {
+      var b = document.createElement('button');
+      b.className = 'picker-item'; b.type = 'button';
+      var loss = arLoss(p, slotAR);
+      if (loss > cutLine) b.dataset.fit = '0';
+      var usedOn = usage[p.id];
+      b.title = (usedOn == null ? '未使用' : (usedOn === 0 ? '封面' : '第 ' + usedOn + ' 页')) +
+        ' · ' + p.w + '×' + p.h;
+      var im = document.createElement('img');
+      im.src = p.url; im.alt = '';
+      var tag = document.createElement('b');
+      tag.textContent = usedOn == null ? '新' : ('P' + usedOn);
+      b.appendChild(im); b.appendChild(tag);
+      b.onclick = function () { applySwap(p); };
+      el.pickerGrid.appendChild(b);
+    });
+
+    var del = document.createElement('button');
+    del.className = 'btn btn-danger';
+    del.textContent = '删掉这张';
+    del.title = '从这组照片里删掉，可撤销';
+    del.onclick = function () { deletePhoto(cur); };
+    var head = document.getElementById('pickerHead');
+    var stale = head.querySelector('.btn-danger');
+    if (stale) stale.remove();
+    head.insertBefore(del, el.pickerClose);
+
+    el.picker.hidden = false;
+  }
+
+  function closePicker() { el.picker.hidden = true; el.pickerGrid.innerHTML = ''; editTarget = null; }
+
+  function setFramePhoto(frame, photo) {
+    frame.photo = photo;
+    frame.crop = M.cropFor(photo, frame.w - frame.pad * 2, frame.h - frame.pad * 2);
+  }
+
+  function applySwap(target) {
+    var t = editTarget;
+    if (!t) return;
+    var frame = state.pages[t.pi].frames[t.fi];
+    var cur = frame.photo;
+    if (target === cur) { closePicker(); return; }
+    var from = null;
+    state.pages.forEach(function (p, pj) {
+      p.frames.forEach(function (f, fj) { if (f.photo === target) from = { pj: pj, fj: fj }; });
+    });
+    setFramePhoto(frame, target);
+    if (from) setFramePhoto(state.pages[from.pj].frames[from.fj], cur);
+    closePicker();
+    paintBook();
+    toast(from ? '两张互换了位置' : '换好了');
+  }
+
+  function deletePhoto(photo) {
+    var idx = state.photos.indexOf(photo);
+    if (idx < 0) return;
+    state.photos.splice(idx, 1);
+    closePicker();
+    buildTray();
+    rebuild();
+    toastUndo('删掉 1 张 · 还剩 ' + state.photos.length + ' 张，版已重排', function () {
+      state.photos.splice(idx, 0, photo);
+      buildTray();
+      rebuild();
     });
   }
 
@@ -275,6 +387,7 @@
   function renderGrid(photos) {
     el.pages.hidden = true;
     el.gridPanel.hidden = false;
+    el.stageHint.hidden = true;
     var mosaic = state.fill === 'mosaic';
     var g = mosaic
       ? M.buildMosaic(photos, { layout: state.layout, plan: state.plan, seed: state.seed })
@@ -399,6 +512,20 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { el.toast.hidden = true; }, 2600);
   }
+  function toastUndo(msg, undo) {
+    el.toast.innerHTML = '';
+    var span = document.createElement('span');
+    span.textContent = msg;
+    var b = document.createElement('button');
+    b.className = 'toast-undo';
+    b.textContent = '撤销';
+    b.onclick = function () { undo(); el.toast.hidden = true; };
+    el.toast.appendChild(span);
+    el.toast.appendChild(b);
+    el.toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.toast.hidden = true; }, 8000);
+  }
 
   /* ---------------- wire up ---------------- */
   el.modes.addEventListener('click', function (e) {
@@ -432,6 +559,10 @@
   el.btnTall.onclick = function () { doExport('tall'); };
   el.btnShuffle.onclick = function () { state.seed = (state.seed * 7919 + 13) % 100000; rebuild(); };
   el.lbClose.onclick = closeLightbox;
+  el.pickerClose.onclick = closePicker;
+  el.picker.addEventListener('click', function (e) {
+    if (e.target === el.picker) closePicker();
+  });
   el.lbPrev.onclick = function () {
     var L = lbList || state.pages;
     lbIndex = (lbIndex - 1 + L.length) % L.length; paintLightbox();
@@ -456,6 +587,10 @@
   };
 
   document.addEventListener('keydown', function (e) {
+    if (!el.picker.hidden) {
+      if (e.key === 'Escape') closePicker();
+      return;
+    }
     if (el.lightbox.hidden) return;
     if (e.key === 'Escape') closeLightbox();
     if (e.key === 'ArrowLeft') el.lbPrev.click();

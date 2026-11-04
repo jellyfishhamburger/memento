@@ -14,7 +14,7 @@ window.MEM = window.MEM || {};
     el.style.backgroundPosition = (-frame.crop.sx * k) + 'px ' + (-frame.crop.sy * k) + 'px';
   }
 
-  M.renderPage = function (page, scale) {
+  M.renderPage = function (page, scale, opts) {
     var root = document.createElement('div');
     root.className = 'page';
     root.style.width = page.w + 'px';
@@ -37,7 +37,7 @@ window.MEM = window.MEM || {};
       root.appendChild(d);
     });
 
-    page.frames.forEach(function (f) {
+    page.frames.forEach(function (f, fi) {
       var host, inner;
       if (f.pad > 0) {
         host = document.createElement('div');
@@ -56,6 +56,14 @@ window.MEM = window.MEM || {};
       host.style.zIndex = f.z || 1;
       if (f.rot) host.style.transform = 'rotate(' + f.rot + 'deg)';
       bgStyle(inner, f);
+      if (opts && opts.frameClick) {
+        host.classList.add('frame-edit');
+        host.title = '点一下：换图 / 删图';
+        host.addEventListener('click', function (ev) {
+          ev.preventDefault(); ev.stopPropagation();
+          opts.frameClick(fi, host);
+        });
+      }
       root.appendChild(host);
     });
 
