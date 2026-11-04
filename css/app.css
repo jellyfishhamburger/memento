@@ -481,3 +481,5 @@ body.solo-mode .page-wrap{margin:0}
 #textMemory{min-height:54px;max-height:120px}
 
 .text-select--sm{height:26px;font-size:11.5px;max-width:180px}
+
+.text-check--wide{margin-left:auto;white-space:nowrap}

@@ -156,6 +156,40 @@ window.MEM = window.MEM || {};
 
   /* Downscale once, keep the small copy: a 26 MP original decodes to ~100 MB of
      bitmap, and 39 of those take the tab down. 1500 px is plenty for a 1080 tile. */
+  /* WebP when the browser can encode it, JPEG when it cannot — never silently wrong */
+  var _webpOk = null;
+  M.canWebp = function () {
+    if (_webpOk != null) return _webpOk;
+    try {
+      var c = document.createElement('canvas');
+      c.width = c.height = 2;
+      _webpOk = c.toDataURL('image/webp').indexOf('data:image/webp') === 0;
+    } catch (e) { _webpOk = false; }
+    return _webpOk;
+  };
+
+  /* max = longest side; returns {blob, w, h, format, scale} */
+  M.toBlobType = function (img, max, type, quality) {
+    var nw = img.naturalWidth || img.width, nh = img.naturalHeight || img.height;
+    var s = Math.min(1, max / Math.max(nw, nh));   // never upscale a small original
+    var cw = Math.max(2, Math.round(nw * s)), ch = Math.max(2, Math.round(nh * s));
+    var wantWebp = (type || 'image/webp') === 'image/webp' && M.canWebp();
+    var kind = wantWebp ? 'image/webp' : 'image/jpeg';
+    var c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    var ctx = c.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    if (wantWebp) { /* alpha is preserved as-is */ }
+    else { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, ch); }  // JPEG has no alpha
+    ctx.drawImage(img, 0, 0, cw, ch);
+    return new Promise(function (res, rej) {
+      c.toBlob(function (b) {
+        if (!b) { rej(new Error('编码失败')); return; }
+        res({ blob: b, w: cw, h: ch, format: kind, scale: s, kb: Math.round(b.size / 1024) });
+      }, kind, quality || 0.85);
+    });
+  };
+
   /* a working copy as a Blob: this is what goes into IndexedDB */
   M.toBlob = function (img, max, quality) {
     var nw = img.naturalWidth || img.width, nh = img.naturalHeight || img.height;

@@ -38,7 +38,7 @@
     textReset: $('#textReset'), textDone: $('#textDone'), textClose: $('#textClose'),
     textMemory: $('#textMemory'), textStyle: $('#textStyle'), textNoText: $('#textNoText'),
     aiBtn: $('#aiBtn'), aiAgain: $('#aiAgain'), aiStatus: $('#aiStatus'), aiIdeas: $('#aiIdeas'),
-    aiSetup: $('#aiSetup'), aiModel: $('#aiModel'),
+    aiSetup: $('#aiSetup'), aiModel: $('#aiModel'), aiBoth: $('#aiBoth'),
     empty: $('#empty'), stat: $('#statLine'),
     zinePanel: $('#zinePanel'), zineList: $('#zineList'), zineNote: $('#zineNote'),
     title: $('#titleInput'), file: $('#fileInput'),
@@ -345,14 +345,22 @@
   }
 
   async function adoptIdea(d) {
-    var doc = docFor(state.direction);
-    var r = M.TEXT.adopt(doc, d, {});
+    var dir = state.direction;
+    var r = M.TEXT.adopt(docFor(dir), d, {});
+    var both = el.aiBoth && el.aiBoth.checked;
+    var otherName = '';
+    if (both) {
+      var other = dir === 'jp' ? 'zine' : 'jp';
+      M.TEXT.adopt(docFor(other), d, {});
+      otherName = other === 'jp' ? '日式小书' : '杂志 Zine';
+    }
     saveText();
     rebuild();
     openText();
-    toast(r.kept
-      ? '用了「' + d.title + '」· 保留了你亲手写的 ' + r.kept + ' 处'
-      : '用了「' + d.title + '」');
+    var kept = r.kept ? '· 保留了你亲手写的 ' + r.kept + ' 处' : '';
+    toast(both
+      ? '两个方向都用上了「' + d.title + '」（另一个：' + otherName + '）' + kept
+      : '用了「' + d.title + '」' + kept);
   }
 
   if (el.aiModel) {
@@ -469,21 +477,25 @@
     catch (e) { URL.revokeObjectURL(tmp); return null; }
     var id = M.STORE.uid('p');
     var rec = await M.analyze(img, { id: id, name: file.name.replace(/\.[^.]+$/, ''), url: tmp });
-    var work = await M.toBlob(img, 1600, 0.92);
-    var thumb = await M.toBlob(img, 420, 0.78);
+    // two tiers, both WebP: 2000 for the editor, 400 for walls. The 2560 "large"
+    // is generated at export time, so nothing twice the size sits on disk.
+    var preview = await M.toBlobType(img, 2000, 'image/webp', 0.85);
+    var thumb = await M.toBlobType(img, 400, 'image/webp', 0.75);
     var stored = {
       id: id,
       name: rec.name || file.name,
       mimeType: file.type || 'image/jpeg',
       fileSize: file.size || 0,
-      width: work.w, height: work.h,
+      width: preview.w, height: preview.h,
       createdAt: file.lastModified || Date.now(),
       importedAt: Date.now(),
       starred: false,
-      blob: work.blob,
+      blob: preview.blob,
       thumbnail: thumb.blob,
-      original: (file.size && file.size <= 8 * 1024 * 1024) ? file : null,
-      storedScale: work.scale,
+      format: preview.format,
+      bytes: { preview: preview.kb, thumb: thumb.kb },
+      original: null,                 // free tier: the original stays on the user's device
+      storedScale: preview.scale,
       analysis: {
         ar: rec.ar, hero: rec.hero, focal: rec.focal, colors: rec.colors,
         bright: rec.bright, sat: rec.sat, detail: rec.detail
@@ -501,10 +513,22 @@
     if (!known) state.library.push(rec);
   }
 
+  var askedPersist = false;
+  async function askPersist() {
+    if (askedPersist) return;
+    askedPersist = true;
+    try {
+      var ok = await M.STORE.persist();
+      if (ok) toast('已申请长期保存：系统不会随手清掉这些照片');
+      else await M.STORE.setPref('persistDenied', Date.now());
+    } catch (e) {}
+  }
+
   async function addFiles(files) {
     var list = Array.prototype.slice.call(files).filter(function (f) { return /^image\//.test(f.type); });
     if (!list.length) return;
     await ensureProject();
+    await askPersist();
     setStat('正在读 ' + list.length + ' 张…');
     var failed = 0, done = 0;
     for (var i = 0; i < list.length; i++) {
@@ -1426,7 +1450,7 @@
     var saved = await M.STORE.persisted();
     el.libQuota.textContent = '已用 ' + (e.usage / 1048576).toFixed(1) + ' MB' +
       (e.quota ? ' / 可用 ' + Math.round(e.quota / 1073741824 * 10) / 10 + ' GB' : '') +
-      (saved ? ' · 已申请长期保存' : '');
+      (saved ? ' · 长期保存已开启' : ' · 未开启长期保存（可能被系统清理）');
     var warn = document.querySelector('#quotaWarn');
     if (warn) {
       if (e.pct > 0.8) {
@@ -1662,9 +1686,14 @@
     });
 
     var e = await M.STORE.estimate();
+    var stored = all.reduce(function (a, p) {
+      return a + ((p.bytes && (p.bytes.preview + p.bytes.thumb)) || 0);
+    }, 0);
     el.plibCount.textContent = all.length + ' 张 · ' +
-      all.filter(function (p) { return p.starred; }).length + ' 张收藏' +
-      (e ? ' · 已用 ' + (e.usage / 1048576).toFixed(1) + ' MB' : '');
+      all.filter(function (p) { return p.starred; }).length + ' 张收藏 · ' +
+      (stored ? '这套照片 ' + (stored / 1024).toFixed(1) + ' MB' : '') +
+      (e ? ' · 本机已用 ' + (e.usage / 1048576).toFixed(1) + ' MB' : '') +
+      (e && e.quota ? ' / 可用 ' + (e.quota / 1073741824).toFixed(1) + ' GB' : '');
 
     el.plibGrid.innerHTML = '';
     if (!list.length) {

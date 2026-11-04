@@ -46,7 +46,7 @@
 
 | 表 | 关键字段 | 说明 |
 |---|---|---|
-| `photos` | `id, blob, thumbnail, original, name, mimeType, width, height, fileSize, createdAt, importedAt, starred, analysis, storedScale` | `blob` 是渲染用的工作副本（长边 1600 JPEG）。原图仅在 ≤8MB 时另存为 `original` |
+| `photos` | `id, blob, thumbnail, format, bytes, name, mimeType, width, height, fileSize, createdAt, importedAt, starred, analysis, storedScale` | `blob` = 长边 **2000 的 WebP**（编辑器用），`thumbnail` = **400 WebP**（照片墙用）。**不保存原图**（自由版：原图留在用户设备上），2560 大图在导出时临时生成 |
 | `projects` | `id, title, type, designDirection, createdAt, updatedAt, currentVersionId, coverPhotoId, settings, texts, schemaVersion` | `settings = {mode, scheme, count, seed, locked, photoIds}` |
 | `versions` | `id, projectId, versionNumber, createdAt, description, snapshot, isAutoSaved` | 每个项目**只有一条** `isAutoSaved` 草稿，被覆盖；手动版本永久保留 |
 | `prefs` | `key, value` | 当前方向、上次打开的作品等 |
@@ -127,7 +127,8 @@ thumbs/<id>.jpg    缩略图
 - **浏览器本地存储不是永久保险箱**。iOS 长期不打开、磁盘紧张、清站点数据都会清掉 IndexedDB。
   界面里显示已用空间，重要作品请定期「导出全部备份」。
 - `navigator.storage.persist()` 只是申请，浏览器可以拒绝；本机 Chrome 一般会同意。
-- **只存 1600px 工作副本**（导出 1080×1440 够用），原图仅 ≤8MB 时另存。想全存原图改 `js/app.js` 的 `importFile()` 一处即可。
+- **只存 2000px WebP + 400 WebP，不存原图**。实测（4160×6240 iPhone 原图）：preview 平均 496KB、缩略图 12KB —— 比原来 1600 JPEG（509KB）更小且更清晰。100 张 ≈ 50MB，10GB 配额可放 ~20000 张。
+- 首次导入会调 `navigator.storage.persist()` 申请长期保存；浏览器可以拒绝，被拒时作品库会显示「未开启长期保存（可能被系统清理）」。
 - 全量备份体积 ≈ 照片数 × 0.5MB（38 张约 20MB）。
 - HEIC 浏览器解不了，导入会提示先转 JPG。
 - 照片删除目前只做「从这本作品移出」，还没做「从照片库彻底删除」（会先查引用再提示）。

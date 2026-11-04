@@ -130,6 +130,7 @@
           <button id="aiAgain" class="btn btn-ghost" hidden>再来一组</button>
           <button id="aiSetup" class="btn btn-ghost">检查连接</button>
           <select id="aiModel" class="text-select text-select--sm" hidden aria-label="本地模型"></select>
+          <label class="text-check text-check--wide"><input type="checkbox" id="aiBoth"> 同时写进另一个设计方向</label>
         </div>
         <p id="aiStatus" class="ai-status" data-state="idle">本地文字助手：检查中…</p>
         <div id="aiIdeas" class="ai-ideas"></div>
@@ -222,7 +223,7 @@
     <div class="saved-head">
       <div>
         <h2 class="saved-title">照片库</h2>
-        <p id="plibNote" class="saved-note">照片只存一份，所有作品共用。从作品里移出不会删照片。</p>
+        <p id="plibNote" class="saved-note">这里存的是<strong>适合网页创作的处理版本</strong>（长边 2000px WebP），不是你的原图备份 —— 原图请留在手机或网盘里。</p>
       </div>
       <button id="plibClose" class="picker-close" aria-label="关闭">✕</button>
     </div>
