@@ -270,9 +270,10 @@ window.MEM = window.MEM || {};
       b.frames.push({ photo: hp, x: 0, y: 0, w: PW, h: PH, pad: 0, role: 'bleed', crop: M.cropFor(hp, PW, PH), z: 1 });
       if (photos[6]) {
         var w3 = cw(4), p3 = photos[6];
+        var h3 = Math.min(w3 / (p3.ar || 1), PH - 96 - 1080);   // never off the foot
         b.frames.push({
-          photo: p3, x: cx(8), y: 1080, w: w3, h: w3 / (p3.ar || 1), pad: 7, role: 'detail', z: 3,
-          crop: M.cropFor(p3, w3 - 14, w3 / (p3.ar || 1) - 14)
+          photo: p3, x: cx(8), y: PH - 96 - h3, w: w3, h: h3, pad: 7, role: 'detail', z: 3,
+          crop: M.cropFor(p3, w3 - 14, h3 - 14)
         });
       }
       return [a, b];
@@ -1267,29 +1268,58 @@ window.MEM = window.MEM || {};
     out.forEach(function (pg) { pg.frames.forEach(function (f) { placed[f.photo.id] = 1; }); });
     var left = list.filter(function (p) { return !placed[p.id]; });
     if (left.length) {
-      // try the last page first, then work backwards
-      for (var pi = out.length - 1; pi >= 0 && left.length; pi--) {
-        var slot = freeRect(out[pi]);
-        if (!slot || slot.w < 200 || slot.h < 200) continue;
-        var n = left.length;
-        var cols = Math.min(n, Math.max(1, Math.floor(slot.w / 220)));
-        var rows = Math.ceil(n / cols);
-        var cellW = slot.w / cols, cellH = slot.h / rows;
-        var placed_here = 0;
-        left.slice().forEach(function (p, k) {
-          if (k >= cols * rows) return;
-          var c = k % cols, r = Math.floor(k / cols);
-          var w = Math.min(cellW * 0.9, cellH * 0.9 * (p.ar || 1));
-          var h = w / (p.ar || 1);
-          out[pi].frames.push({
-            photo: p, x: slot.x + c * cellW + (cellW - w) / 2,
-            y: slot.y + r * cellH + (cellH - h) / 2, w: w, h: h,
-            pad: 7, role: 'detail', z: 5, crop: M.cropFor(p, w - 14, h - 14)
+      /* Spread the leftovers over every page that still has a hole, in order,
+         and never draw a print narrower than MIN_W: a dump of thumbnails is
+         worse than a page with air in it. */
+      var MIN_W = 200;
+      var guard = 0;
+      while (left.length && guard++ < 40) {
+        var didSomething = false;
+        for (var pi = out.length - 1; pi >= 0 && left.length; pi--) {
+          var slot = freeRect(out[pi]);
+          if (!slot || slot.w < MIN_W + 20 || slot.h < MIN_W + 20) continue;
+          var cols = Math.max(1, Math.min(left.length, Math.floor(slot.w / (MIN_W + 24)), 4));
+          var rows = Math.max(1, Math.floor(slot.h / (MIN_W + 24)));
+          var fit = Math.min(left.length, cols * rows);
+          if (!fit) continue;
+          var useRows = Math.ceil(fit / cols);
+          var cellW = slot.w / cols, cellH = slot.h / useRows;
+          for (var k = 0; k < fit; k++) {
+            var ph2 = left.shift();
+            var c = k % cols, r = Math.floor(k / cols);
+            var w = Math.min(cellW * 0.94, cellH * 0.94 * (ph2.ar || 1));
+            if (w < MIN_W) w = MIN_W;
+            var h = w / (ph2.ar || 1);
+            if (h > cellH) { h = cellH * 0.94; w = h * (ph2.ar || 1); }
+            out[pi].frames.push({
+              photo: ph2,
+              x: slot.x + c * cellW + (cellW - w) / 2,
+              y: slot.y + r * cellH + (cellH - h) / 2,
+              w: w, h: h, pad: 6, role: 'detail', z: 5,
+              crop: M.cropFor(ph2, w - 12, h - 12)
+            });
+          }
+          didSomething = true;
+        }
+        if (!didSomething) break;
+      }
+      // last resort: a photo that still has no page gets minimised into the
+      // emptiest page as a strip rather than vanishing
+      if (left.length) {
+        var host = out[out.length - 1];
+        var line = freeRect(host);
+        if (line) {
+          var n = left.length, wS = Math.max(90, Math.min(line.w / n - 10, 200));
+          left.forEach(function (pp, ii) {
+            var hS = wS / (pp.ar || 1);
+            host.frames.push({
+              photo: pp, x: line.x + ii * (wS + 10), y: line.y + Math.min(20, Math.max(0, line.h - hS)),
+              w: wS, h: hS, pad: 5, role: 'detail', z: 5,
+              crop: M.cropFor(pp, wS - 10, hS - 10)
+            });
           });
-          left.splice(left.indexOf(p), 1);
-          placed_here++;
-        });
-        if (!placed_here) break;
+          left = [];
+        }
       }
     }
 
