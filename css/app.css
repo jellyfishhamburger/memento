@@ -278,6 +278,11 @@ body.solo-mode .page-wrap{margin:0}
   content:"";position:absolute;inset:0;border:1px solid rgba(26,24,21,.12);pointer-events:none;
 }
 .spread-row .page-btn:hover::after{border-color:rgba(26,24,21,.5)}
+.spread-type{
+  position:absolute;left:132px;top:-23px;height:22px;font-size:11px;color:var(--muted);
+  background:transparent;border:1px solid var(--line);border-radius:2px;padding:0 4px;
+}
+.spread-type:hover{color:var(--ink);border-color:var(--line-2)}
 
 @media (max-width:900px){
   .bar{height:auto;flex-wrap:wrap;padding:8px 12px;gap:8px}

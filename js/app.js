@@ -333,11 +333,22 @@
       row.className = 'spread-row';
       var lab = document.createElement('span');
       lab.className = 'spread-label';
-      lab.textContent = pad2(2 + i * 2) + ' — ' + pad2(3 + i * 2) + ' · ' + sp.name +
-        ' · ' + sp.photos.length + ' 张';
+      lab.textContent = pad2(2 + i * 2) + ' — ' + pad2(3 + i * 2) + ' · ' + sp.photos.length + ' 张';
       row.appendChild(pageBtn(sp.a, 1 + i * 2, '第 ' + (2 + i * 2) + ' 页'));
       row.appendChild(pageBtn(sp.b, 2 + i * 2, '第 ' + (3 + i * 2) + ' 页'));
       row.appendChild(lab);
+
+      var sel = document.createElement('select');
+      sel.className = 'spread-type';
+      sel.setAttribute('aria-label', '这一跨页的排版');
+      M.ZINE_TYPES.forEach(function (t) {
+        var o = document.createElement('option');
+        o.value = t.key; o.textContent = t.name;
+        if (t.key === sp.type) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.onchange = function () { changeSpreadType(i, sel.value); };
+      row.appendChild(sel);
       el.zineList.appendChild(row);
     });
 
@@ -348,6 +359,22 @@
   }
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  /* swap one spread's layout; photos that no longer fit move to the neighbour */
+  function changeSpreadType(i, key) {
+    var z = state.zine;
+    if (!z || !z.chunks) return;
+    var chunks = z.chunks.map(function (c) { return c.slice(); });
+    var types = z.types.map(function (t, j) { return j === i ? key : t; });
+    M.rebalanceZine(chunks, types, z.total - 1);
+
+    state.zine = M.buildZine(state.photos, {
+      chunks: chunks, types: types, coverPhoto: z.cover,
+      title: state.title || '未命名的一卷', year: state.year, seed: state.seed
+    });
+    state.pages = state.zine.pages;
+    paintZine();
+  }
 
   /* ---------------- swap / delete ---------------- */
   var editTarget = null;
