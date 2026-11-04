@@ -154,7 +154,157 @@ window.MEM = window.MEM || {};
     };
   }
 
-  /* ---------- public ---------- */
+  /* ---------- mosaic: every photo, nine squares ---------- */
+  var WEIGHTS = [1.25, 0.85, 1.25, 0.85, 0.30, 0.85, 1.25, 0.85, 1.25]; // corners heavy, centre a single hero
+
+  function allocCounts(n, maxPer) {
+    var wsum = 0, i;
+    for (i = 0; i < 9; i++) wsum += WEIGHTS[i];
+    var counts = [];
+    for (i = 0; i < 9; i++) counts.push(clamp(Math.round(n * WEIGHTS[i] / wsum), 1, maxPer));
+    var diff = n - counts.reduce(function (a, b) { return a + b; }, 0);
+    var guard = 0;
+    while (diff !== 0 && guard++ < 200) {
+      var idx = -1;
+      if (diff > 0) {
+        for (i = 0; i < 9; i++) if (counts[i] < maxPer && (idx < 0 || counts[i] < counts[idx])) idx = i;
+        counts[idx]++; diff--;
+      } else {
+        for (i = 0; i < 9; i++) if (counts[i] > 1 && (idx < 0 || counts[i] > counts[idx])) idx = i;
+        counts[idx]--; diff++;
+      }
+    }
+    return counts;
+  }
+
+  function squareSlots(n, g, seed) {
+    function vs(r, ratio) {
+      var w1 = r.w * ratio - g / 2, w2 = r.w * (1 - ratio) - g / 2;
+      return [{ x: r.x, y: r.y, w: w1, h: r.h }, { x: r.x + r.w * ratio + g / 2, y: r.y, w: w2, h: r.h }];
+    }
+    function hs(r, ratio) {
+      var h1 = r.h * ratio - g / 2, h2 = r.h * (1 - ratio) - g / 2;
+      return [{ x: r.x, y: r.y, w: r.w, h: h1 }, { x: r.x, y: r.y + r.h * ratio + g / 2, w: r.w, h: h2 }];
+    }
+    var B = { x: 0, y: 0, w: 1, h: 1 };
+    if (n === 1) return [{ x: 0, y: 0, w: 1, h: 1 }];
+    if (n === 2) {
+      var p2 = vs(B, 0.5);
+      return (seed % 3 === 0) ? hs(B, 0.56) : p2;
+    }
+    if (n === 3) {
+      var a = vs(B, 0.62); var r3 = hs(a[1], 0.5);
+      return [a[0], r3[0], r3[1]];
+    }
+    if (n === 4) {
+      var p4 = vs(B, (seed % 2) ? 0.58 : 0.5);
+      if (seed % 2) {
+        var L = hs(p4[0], 0.62), R = hs(p4[1], 0.38);
+        return [L[0], L[1], R[0], R[1]];
+      }
+      var L2 = hs(p4[0], 0.5), R2 = hs(p4[1], 0.5);
+      return [L2[0], L2[1], R2[0], R2[1]];
+    }
+    if (n === 5) {
+      // one tall hero + a column of four
+      var a5 = vs(B, 0.58);
+      var col = a5[1];
+      var h4 = (col.h - 3 * g) / 4;
+      var out5 = [a5[0]];
+      for (var q = 0; q < 4; q++) out5.push({ x: col.x, y: col.y + q * (h4 + g), w: col.w, h: h4 });
+      return out5;
+    }
+    // 6: three across, two down
+    var out = [], cw = (1 - 2 * g) / 3, ch = (1 - g) / 2;
+    for (var r = 0; r < 2; r++) {
+      for (var c = 0; c < 3; c++) {
+        out.push({ x: c * (cw + g), y: r * (ch + g), w: cw, h: ch });
+      }
+    }
+    return out;
+  }
+
+  function fillTile(photos, layout, seed) {
+    var g = layout.pad ? 0.012 : 0.014;
+    var slots = squareSlots(photos.length, g, seed);
+    // biggest slot takes the strongest photo in this tile
+    var order = slots.map(function (s, i) { return { s: s, i: i, a: s.w * s.h }; })
+      .sort(function (x, y) { return y.a - x.a; });
+    var pool = photos.slice().sort(function (x, y) { return y.hero - x.hero; });
+    var placed = new Array(slots.length);
+    var used = [];
+    order.forEach(function (o, rank) {
+      var slotAR = o.s.w / o.s.h;
+      var best = -1, bestS = -1e9;
+      for (var k = 0; k < pool.length; k++) {
+        if (used.indexOf(pool[k]) >= 0) continue;
+        var p = pool[k];
+        var arFit = Math.max(0, 1 - Math.abs(Math.log((p.ar || 1) / slotAR)) / Math.log(3.2));
+        var sc = arFit * (rank === 0 ? 1.0 : 1.4) + (rank === 0 ? p.hero * 0.9 : 0) + rngWeight(p, seed) * 0.05;
+        // keep one square from being four versions of the same shot
+        for (var q = 0; q < used.length; q++) sc -= (1 - novelty(p, used[q])) * 0.22;
+        if (sc > bestS) { bestS = sc; best = k; }
+      }
+      if (best < 0) best = 0;
+      placed[o.i] = pool[best];
+      used.push(pool[best]);
+    });
+    return placed;
+  }
+
+  function mosaicTile(photos, layout, seed) {
+    var pad = Math.round(SIZE * layout.pad);
+    var inner = SIZE - pad * 2;
+    var page = {
+      w: SIZE, h: SIZE, bg: layout.bg, ink: '#17150f', muted: '#79715f',
+      style: 'grid', frames: [], rects: [], texts: []
+    };
+    var g = layout.pad ? 0.012 : 0.014;
+    var slots = squareSlots(photos.length, g, seed);
+    var chosen = fillTile(photos, layout, seed);
+    slots.forEach(function (s, i) {
+      var p = chosen[i];
+      if (!p) return;
+      var w = s.w * inner, h = s.h * inner;
+      page.frames.push({
+        photo: p, x: pad + s.x * inner, y: pad + s.y * inner, w: w, h: h, pad: 0,
+        crop: M.cropFor(p, w, h), rot: 0, z: 1
+      });
+    });
+    return page;
+  }
+
+  M.buildMosaic = function (photos, opt) {
+    opt = opt || {};
+    var layout = LAYOUTS[opt.layout] || LAYOUTS.paper;
+    var list = photos.filter(function (p) { return p && p.img; });
+    if (!list.length) return { tiles: [], cells: [], layout: layout, counts: [] };
+    var counts = allocCounts(list.length, 6);
+    var order = list.slice();
+    if (opt.plan !== 'story') order.sort(function (a, b) { return (b.hero || 0) - (a.hero || 0); });
+
+    // deal the photos out: each square gets a mix, not a block of the best ones
+    var buckets = counts.map(function () { return []; });
+    var room = counts.slice();
+    for (var i = 0; i < order.length; i++) {
+      var t = i % 9, guard = 0;
+      while (room[t] <= 0 && guard++ < 9) t = (t + 1) % 9;
+      if (room[t] <= 0) break;
+      buckets[t].push(order[i]);
+      room[t]--;
+    }
+
+    var tiles = buckets.map(function (b, i) {
+      return b.length ? mosaicTile(b, layout, (opt.seed || 1) + i * 7) : null;
+    }).filter(Boolean);
+
+    return {
+      tiles: tiles, cells: buckets, layout: layout, counts: counts,
+      total: order.length
+    };
+  };
+
+
   M.GRID_LAYOUTS = LAYOUTS;
 
   M.buildGrid = function (photos, opt) {

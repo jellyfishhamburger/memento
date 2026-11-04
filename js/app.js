@@ -6,13 +6,14 @@
   var state = {
     photos: [], pages: [], grid: null,
     mode: 'book', style: 'editorial', plan: 'hero', format: 'portrait', layout: 'paper',
-    excluded: {}, seed: 11, title: '十一月的海',
+    fill: 'mosaic', excluded: {}, seed: 11, title: '十一月的海',
     year: new Date().getFullYear(), busy: false
   };
 
   var $ = function (s) { return document.querySelector(s); };
   var el = {
     styles: $('#styles'), plans: $('#plans'), formats: $('#formats'), layouts: $('#layouts'),
+    fills: $('#fills'),
     tray: $('#tray'), modes: $('#modes'),
     pages: $('#pages'), empty: $('#empty'), stat: $('#statLine'),
     gridPanel: $('#gridPanel'), gridWrap: $('#gridWrap'), gridStrip: $('#gridStrip'),
@@ -42,6 +43,11 @@
     el.blockStyles.hidden = isGrid;
     el.blockFormat.hidden = isGrid;
     el.blockGrid.hidden = !isGrid;
+
+    Array.prototype.forEach.call(el.fills.children, function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.fill === state.fill));
+    });
+    el.layouts.hidden = false;
 
     el.styles.innerHTML = '';
     Object.keys(M.STYLES).forEach(function (k) {
@@ -254,9 +260,10 @@
   function renderGrid(photos) {
     el.pages.hidden = true;
     el.gridPanel.hidden = false;
-    var g = M.buildGrid(photos, {
-      layout: state.layout, plan: state.plan, seed: state.seed, fixed: pickList
-    });
+    var mosaic = state.fill === 'mosaic';
+    var g = mosaic
+      ? M.buildMosaic(photos, { layout: state.layout, plan: state.plan, seed: state.seed })
+      : M.buildGrid(photos, { layout: state.layout, plan: state.plan, seed: state.seed, fixed: pickList });
     state.grid = g;
     var n = g.tiles.length;
     setStat(photos.length + ' 张 → 选 ' + n + ' 张');
@@ -284,24 +291,42 @@
     });
 
     el.gridStrip.innerHTML = '';
-    g.cells.forEach(function (p, i) {
-      var cell2 = document.createElement('div');
-      cell2.className = 'strip-cell';
-      var im = document.createElement('img');
-      im.src = p.url; im.alt = p.name || '';
-      var n2 = document.createElement('b');
-      n2.textContent = String(i + 1).padStart(2, '0');
-      cell2.appendChild(im); cell2.appendChild(n2);
-      cell2.title = p.name || '';
-      el.gridStrip.appendChild(cell2);
-    });
+    el.gridStrip.className = 'grid-strip' + (mosaic ? ' grid-strip--counts' : '');
+    if (mosaic) {
+      (g.counts || []).forEach(function (c, i) {
+        var d = document.createElement('div');
+        d.className = 'count-cell';
+        d.textContent = c;
+        d.title = '第 ' + (i + 1) + ' 格 · ' + c + ' 张';
+        el.gridStrip.appendChild(d);
+      });
+    } else {
+      g.cells.forEach(function (p, i) {
+        var cell2 = document.createElement('div');
+        cell2.className = 'strip-cell';
+        var im = document.createElement('img');
+        im.src = p.url; im.alt = p.name || '';
+        var n2 = document.createElement('b');
+        n2.textContent = String(i + 1).padStart(2, '0');
+        cell2.appendChild(im); cell2.appendChild(n2);
+        cell2.title = p.name || '';
+        el.gridStrip.appendChild(cell2);
+      });
+    }
 
-    el.gridNote.textContent = '从 ' + photos.length + ' 张里选 9 张 · ' +
-      (g.layout.key === 'paper' ? '每张留纸边' : '满幅') +
-      ' · 按这个顺序发，微信里就是这张图';
-    var dark = g.cells.filter(function (p) { return (p.bright || .5) < 0.36; }).length;
-    el.gridWhy.textContent = '上一排与下一排之间换了明暗和色系：' + dark +
-      ' 张暗调穿插在亮调里，中间那格放的是这一组最抓眼的一张。';
+    if (mosaic) {
+      el.gridNote.textContent = photos.length + ' 张全部用上 · 每格 1–6 张 · 按 01–09 的顺序发';
+      el.gridWhy.textContent = '中间那格只放一张，是全组的眼；四个角放得最密，四边留一口气。' +
+        '所以九张摆在一起读起来是一张版面，不是九张照片。';
+      setStat(photos.length + ' 张 → 9 格');
+    } else {
+      el.gridNote.textContent = '从 ' + photos.length + ' 张里选 9 张 · ' +
+        (g.layout.key === 'paper' ? '每张留纸边' : '满幅') + ' · 按这个顺序发，微信里就是这张图';
+      var dark = g.cells.filter(function (p) { return (p.bright || .5) < 0.36; }).length;
+      el.gridWhy.textContent = '上一排与下一排之间换了明暗和色系：' + dark +
+        ' 张暗调穿插在亮调里，中间那格放的是这一组最抓眼的一张。';
+      setStat(photos.length + ' 张 → 选 ' + n + ' 张');
+    }
   }
 
   /* ---------------- lightbox ---------------- */
@@ -369,6 +394,13 @@
     buildOptions();
     rebuild();
   });
+  el.fills.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-fill]');
+    if (!b) return;
+    state.fill = b.dataset.fill;
+    buildOptions();
+    rebuild();
+  });
   el.btnImport.onclick = el.btnPick.onclick = function () { el.file.click(); };
   el.file.onchange = function (e) { addFiles(e.target.files); el.file.value = ''; };
   el.btnDemo.onclick = loadDemo;
@@ -417,12 +449,13 @@
   var solo = null, soloScale = 1, manifest = null, pickList = null;
   try {
     var qs = new URLSearchParams(location.search);
-    ['style', 'plan', 'format', 'layout', 'mode'].forEach(function (k) {
+    ['style', 'plan', 'format', 'layout', 'mode', 'fill'].forEach(function (k) {
       var v = qs.get(k);
       if (!v) return;
       if (k === 'style' && !M.STYLES[v]) return;
       if (k === 'format' && !M.FORMATS[v]) return;
       if (k === 'layout' && !M.GRID_LAYOUTS[v]) return;
+      if (k === 'fill' && v !== 'single' && v !== 'mosaic') return;
       state[k] = v;
     });
     if (qs.get('pick')) {
