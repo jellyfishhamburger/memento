@@ -24,22 +24,27 @@
 <main class="shell">
   <aside class="rail">
     <section class="rail-block">
-      <h2 class="rail-title">版式</h2>
-      <div id="themes" class="opt-list"></div>
+      <h2 class="rail-title">排版模式</h2>
+      <div id="modes" class="opt-list"></div>
+    </section>
+
+    <section class="rail-block">
+      <h2 class="rail-title">方案</h2>
+      <div id="schemes" class="opt-list opt-list--tight"></div>
     </section>
 
     <section class="rail-block">
       <h2 class="rail-title">张数</h2>
       <div id="counts" class="seg" role="group" aria-label="张数">
-        <button type="button" data-spreads="4">九张</button>
-        <button type="button" data-spreads="5">十一张</button>
+        <button type="button" data-count="9">九张</button>
+        <button type="button" data-count="11">十一张</button>
       </div>
-      <p id="countNote" class="rail-note">九张 = 封面 + 四个跨页：朋友圈九图正好。</p>
+      <p id="countNote" class="rail-note">九张 = 封面 + 四页/四跨页：朋友圈九图正好。</p>
     </section>
 
     <section class="rail-block">
       <h2 class="rail-title">照片</h2>
-      <p class="rail-note">点一张删掉（可撤销）。删到二十五张左右，留白多的版式才用得上。</p>
+      <p class="rail-note">点一张删掉（可撤销）。</p>
       <div id="tray" class="tray"></div>
     </section>
 
@@ -103,6 +108,7 @@
 <script src="js/analyze.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/spread.js"></script>
+<script src="js/compose.js"></script>
 <script src="js/render.js"></script>
 <script src="js/export.js"></script>
 <script src="js/app.js"></script>

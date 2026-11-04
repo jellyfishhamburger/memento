@@ -312,3 +312,19 @@ body.solo-mode .page-wrap{margin:0}
   .zine-panel{gap:26px}
   .spread-type{left:auto;right:0;top:-24px}
 }
+
+/* ---------- composition engine ---------- */
+.opt--sm{padding:5px 8px}
+.opt-list--tight{gap:0}
+.row-tools{display:flex;gap:6px;align-items:center;margin-left:10px;padding-top:2px}
+.lock-btn{
+  height:22px;padding:0 7px;font-size:10.5px;letter-spacing:.06em;color:var(--faint);
+  background:transparent;border:1px solid var(--line);border-radius:2px;cursor:pointer;
+}
+.lock-btn:hover{color:var(--ink);border-color:var(--line-2)}
+.lock-btn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.spread-label{top:-16px}
+.spread-row > .page-btn{flex:0 0 auto}
+.row-tools{flex:0 0 auto;white-space:nowrap}
+.lock-btn{white-space:nowrap;flex:none}
+.spread-row--single .page-btn{background:transparent}

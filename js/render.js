@@ -14,6 +14,30 @@ window.MEM = window.MEM || {};
     el.style.backgroundPosition = (-frame.crop.sx * k) + 'px ' + (-frame.crop.sy * k) + 'px';
   }
 
+
+  /* text has a measure: wrap to its column so nothing can run off the page */
+  var _mc = null;
+  function wrapLines(t) {
+    var key = t.size + '|' + t.family + '|' + t.weight + '|' + Math.round(t.w) + '|' + (t.tracking || 0);
+    if (t.__k === key) return t.__disp;
+    if (!_mc) _mc = document.createElement('canvas').getContext('2d');
+    _mc.font = (t.weight || 400) + ' ' + t.size + 'px ' + t.family;
+    var track = t.tracking || 0;
+    function m(s) { return _mc.measureText(s).width + Math.max(0, s.length - 1) * track; }
+    var out = [];
+    (t.lines || []).forEach(function (para) {
+      var tokens = String(para).match(/[　-鿿＀-￯]|[^\s　-鿿＀-￯]+|\s+/g) || [''];
+      var cur = '';
+      tokens.forEach(function (tk) {
+        if (!cur || m(cur + tk) <= t.w) cur += tk;
+        else { out.push(cur.replace(/\s+$/, '')); cur = tk.trim() ? tk : ''; }
+      });
+      out.push(cur.replace(/\s+$/, ''));
+    });
+    t.__k = key; t.__disp = out;
+    return out;
+  }
+
   M.renderPage = function (page, scale, opts) {
     var root = document.createElement('div');
     root.className = 'page';
@@ -173,7 +197,7 @@ window.MEM = window.MEM || {};
         ctx.translate(cx, cy); ctx.rotate(t.rot * Math.PI / 180); ctx.translate(-cx, -cy);
       }
       var ax = t.align === 'center' ? t.x + t.w / 2 : t.align === 'right' ? t.x + t.w : t.x;
-      t.lines.forEach(function (line, i) {
+      wrapLines(t).forEach(function (line, i) {
         ctx.fillText(line, ax, t.y + i * t.size * t.lineHeight);
       });
       ctx.restore();

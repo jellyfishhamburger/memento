@@ -5,13 +5,23 @@
   var M = window.MEM;
 
   var state = {
-    photos: [], zine: null, seed: 11, theme: 'quiet', spreads: 4,
-    title: '十一月的海', year: new Date().getFullYear(), busy: false
+    photos: [], zine: null, seed: 11, mode: 'C', scheme: 0, count: 9,
+    title: '十一月的海', year: new Date().getFullYear(), busy: false, locked: {}
   };
+
+  var MODES = [
+    { key: 'A', name: '编辑杂志', note: '单页构图：主图 + 细节，大片留白' },
+    { key: 'B', name: '跨页全景', note: '两张一组：图跨中缝，冲击力优先' },
+    { key: 'C', name: '摄影小书', note: '整本叙事：开场 → 细节 → 高潮 → 收尾' }
+  ];
+  function unitsWanted() {
+    if (state.mode === 'A') return state.count === 9 ? 8 : 10;
+    return state.count === 9 ? 4 : 5;
+  }
 
   var $ = function (s) { return document.querySelector(s); };
   var el = {
-    themes: $('#themes'), counts: $('#counts'), countNote: $('#countNote'), tray: $('#tray'),
+    modes: $('#modes'), schemes: $('#schemes'), counts: $('#counts'), countNote: $('#countNote'), tray: $('#tray'),
     empty: $('#empty'), stat: $('#statLine'),
     zinePanel: $('#zinePanel'), zineList: $('#zineList'), zineNote: $('#zineNote'),
     title: $('#titleInput'), file: $('#fileInput'),
@@ -29,35 +39,34 @@
 
   /* ---------------- rail ---------------- */
   function buildRail() {
-    el.themes.innerHTML = '';
-    Object.keys(M.ZINE).forEach(function (k) {
-      var t = M.ZINE[k];
+    el.modes.innerHTML = '';
+    MODES.forEach(function (m) {
       var b = document.createElement('button');
-      b.className = 'opt'; b.type = 'button';
-      b.setAttribute('aria-pressed', String(state.theme === k));
-      b.innerHTML = '<span class="opt-sw" aria-hidden="true">' +
-        [t.paper, t.ink, t.muted].map(function (c) { return '<i style="background:' + c + '"></i>'; }).join('') +
-        '</span><span class="opt-body"><span class="opt-name">' + t.name + '</span>' +
-        '<span class="opt-note">' + themeNote(k) + '</span></span>';
-      b.onclick = function () { state.theme = k; buildRail(); rebuild(); };
-      el.themes.appendChild(b);
+      b.type = 'button'; b.className = 'opt';
+      b.setAttribute('aria-pressed', String(state.mode === m.key));
+      b.innerHTML = '<span class="opt-body"><span class="opt-name">' + m.name +
+        '</span><span class="opt-note">' + m.note + '</span></span>';
+      b.onclick = function () { state.mode = m.key; state.forced = {}; state.scheme = 0; buildRail(); rebuild(); };
+      el.modes.appendChild(b);
+    });
+
+    el.schemes.innerHTML = '';
+    var names = M.SCHEME_NAME[state.mode] || [];
+    names.forEach(function (nm, i) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'opt opt--sm';
+      b.setAttribute('aria-pressed', String(state.scheme === i));
+      b.innerHTML = '<span class="opt-body"><span class="opt-name">' + (i + 1) + ' · ' + nm + '</span></span>';
+      b.onclick = function () { state.scheme = i; state.forced = {}; buildRail(); rebuild(); };
+      el.schemes.appendChild(b);
     });
 
     Array.prototype.forEach.call(el.counts.children, function (b) {
-      b.setAttribute('aria-pressed', String(Number(b.dataset.spreads) === state.spreads));
+      b.setAttribute('aria-pressed', String(Number(b.dataset.count) === state.count));
     });
-    el.countNote.textContent = state.spreads === 4
-      ? '九张 = 封面 + 四个跨页：朋友圈九图正好。'
-      : '十一张 = 封面 + 五个跨页：小红书可以发十张以上。';
-  }
-
-  function themeNote(k) {
-    return {
-      quiet: '白纸、小字、留白最多',
-      editorial: '衬线标题、页脚、杂志感',
-      collage: '每页底色取自照片，色块拼贴',
-      contact: '纯白、密排、接触表'
-    }[k] || '';
+    el.countNote.textContent = state.count === 9
+      ? '九张 = 封面 + ' + (state.mode === 'A' ? '八页' : '四跨页') + '：朋友圈九图正好。'
+      : '十一张 = 封面 + ' + (state.mode === 'A' ? '十页' : '五跨页') + '：小红书可以发十张以上。';
   }
 
   function buildTray() {
@@ -137,9 +146,18 @@
     el.zinePanel.hidden = false;
     el.btnPNG.disabled = false; el.btnPDF.disabled = false; el.btnShuffle.disabled = false;
 
-    state.zine = M.buildZine(state.photos, {
-      seed: state.seed, title: state.title || '未命名的一卷', year: state.year,
-      theme: state.theme, spreads: state.spreads
+    var preset = Object.keys(state.locked).map(function (k) {
+      var L = state.locked[k];
+      var ph = L.photos.map(function (id) {
+        return state.photos.filter(function (p) { return p.id === id; })[0];
+      }).filter(Boolean);
+      return { i: Number(k), key: L.key, photos: ph };
+    });
+
+    state.zine = M.composeBook(state.photos, {
+      title: state.title || '未命名的一卷', year: state.year,
+      mode: state.mode, scheme: state.scheme, units: unitsWanted(),
+      seed: state.seed, coverPhoto: state.coverPhoto, preset: preset
     });
     paintZine();
   }
@@ -149,7 +167,8 @@
     if (!z || !z.pages.length) return;
     el.zineList.innerHTML = '';
     var stageW = el.zineList.clientWidth || 1000;
-    var scale = Math.min((stageW - 6) / (2 * z.pages[0].w), 500 / z.pages[0].h);
+    var pair = z.pair;
+    var scale = Math.min((stageW - 6) / (pair ? 2 * z.pages[0].w : z.pages[0].w), 500 / z.pages[0].h);
 
     function pageBtn(pg, pi, label) {
       var btn = document.createElement('button');
@@ -171,46 +190,79 @@
     row0.appendChild(l0);
     el.zineList.appendChild(row0);
 
-    z.spreads.forEach(function (sp, i) {
+    z.units.forEach(function (u, i) {
       var row = document.createElement('div');
       row.className = 'spread-row';
+
       var lab = document.createElement('span');
       lab.className = 'spread-label';
-      lab.textContent = pad2(2 + i * 2) + ' — ' + pad2(3 + i * 2) + ' · ' + sp.photos.length + ' 张';
-      row.appendChild(pageBtn(sp.a, 1 + i * 2, '第 ' + (2 + i * 2) + ' 页'));
-      row.appendChild(pageBtn(sp.b, 2 + i * 2, '第 ' + (3 + i * 2) + ' 页'));
+      lab.textContent = pair
+        ? pad2(u.startIndex + 1) + ' — ' + pad2(u.startIndex + 2) + ' · ' + (M.COMP[u.key] ? M.COMP[u.key].name : '')
+        : pad2(u.startIndex + 1) + ' · ' + (M.COMP[u.key] ? M.COMP[u.key].name : '');
       row.appendChild(lab);
+
+      u.pages.forEach(function (pg, k) {
+        row.appendChild(pageBtn(pg, u.startIndex + k, '第 ' + (u.startIndex + k + 1) + ' 页'));
+      });
+
+      var tools = document.createElement('div');
+      tools.className = 'row-tools';
 
       var sel = document.createElement('select');
       sel.className = 'spread-type';
-      sel.setAttribute('aria-label', '这一跨页的排版');
-      M.ZINE_TYPES.forEach(function (t) {
+      sel.setAttribute('aria-label', '这一页的构图');
+      Object.keys(M.COMP).forEach(function (k) {
+        var c = M.COMP[k];
+        if (k === 'cover' || c.mode !== state.mode) return;
         var o = document.createElement('option');
-        o.value = t.key; o.textContent = t.name;
-        if (t.key === sp.type) o.selected = true;
+        o.value = k; o.textContent = c.name;
+        if (k === u.key) o.selected = true;
         sel.appendChild(o);
       });
-      sel.onchange = function () { changeSpreadType(i, sel.value); };
-      row.appendChild(sel);
+      sel.onchange = function () { changeComp(i, sel.value); };
+      tools.appendChild(sel);
+
+      var lock = document.createElement('button');
+      lock.type = 'button';
+      lock.className = 'lock-btn';
+      lock.setAttribute('aria-pressed', String(!!state.locked[i]));
+      lock.title = state.locked[i] ? '已锁定：重排时保留这一页' : '锁定这一页';
+      lock.textContent = state.locked[i] ? '锁定' : '锁定';
+      lock.onclick = function () { toggleLock(i); };
+      tools.appendChild(lock);
+
+      row.appendChild(tools);
       el.zineList.appendChild(row);
     });
 
-    el.zineNote.textContent = z.total + ' 张 → ' + z.pages.length + ' 张图（1 封面 + ' +
-      z.spreads.length + ' 个跨页）· 两张一组，手机上滑过去，横图连成一整张。';
+    el.zineNote.textContent = z.total + ' 张 → ' + z.pages.length + ' 张图 · ' +
+      (pair ? '两张一组，手机上滑过去，跨页的图连成一整张。' : '每页独立构图。');
     setStat(z.total + ' 张 · ' + z.pages.length + ' 张图');
   }
 
-  function changeSpreadType(i, key) {
-    var z = state.zine;
-    if (!z || !z.chunks) return;
-    var chunks = z.chunks.map(function (c) { return c.slice(); });
-    var types = z.types.map(function (t, j) { return j === i ? key : t; });
-    M.rebalanceZine(chunks, types, z.total - 1);
-    state.zine = M.buildZine(state.photos, {
-      chunks: chunks, types: types, coverPhoto: z.cover,
-      title: state.title || '未命名的一卷', year: state.year, seed: state.seed, theme: state.theme
-    });
+  function toggleLock(i) {
+    if (state.locked[i]) { delete state.locked[i]; }
+    else {
+      var u = state.zine.units[i];
+      var ids = [];
+      u.pages.forEach(function (pg) { pg.frames.forEach(function (f) { ids.push(f.photo.id); }); });
+      state.locked[i] = { key: u.key, photos: ids };
+    }
     paintZine();
+  }
+
+  function changeComp(i, key) {
+    var u = state.zine.units[i];
+    if (!u) return;
+    state.locked[i] = {
+      key: key,
+      photos: (function () {
+        var ids = [];
+        u.pages.forEach(function (pg) { pg.frames.forEach(function (f) { ids.push(f.photo.id); }); });
+        return ids;
+      })()
+    };
+    rebuild();
   }
 
   /* ---------------- editor: swap / crop / delete ---------------- */
@@ -433,9 +485,10 @@
 
   /* ---------------- wire up ---------------- */
   el.counts.addEventListener('click', function (e) {
-    var b = e.target.closest('button[data-spreads]');
+    var b = e.target.closest('button[data-count]');
     if (!b) return;
-    state.spreads = Number(b.dataset.spreads);
+    state.count = Number(b.dataset.count);
+    state.locked = {};
     buildRail(); rebuild();
   });
   el.btnImport.onclick = el.btnPick.onclick = function () { el.file.click(); };
@@ -485,8 +538,9 @@
   var manifest = null;
   try {
     var qs = new URLSearchParams(location.search);
-    if (qs.get('theme') && M.ZINE[qs.get('theme')]) state.theme = qs.get('theme');
-    if (qs.get('spreads')) state.spreads = parseInt(qs.get('spreads'), 10) || 4;
+    if (qs.get('mode') && 'ABC'.indexOf(qs.get('mode')) >= 0) state.mode = qs.get('mode');
+    if (qs.get('scheme')) state.scheme = parseInt(qs.get('scheme'), 10) || 0;
+    if (qs.get('count')) state.count = parseInt(qs.get('count'), 10) === 11 ? 11 : 9;
     if (qs.get('title')) { state.title = qs.get('title'); el.title.value = state.title; }
     if (qs.get('manifest')) manifest = qs.get('manifest');
   } catch (e) { /* ignore */ }
