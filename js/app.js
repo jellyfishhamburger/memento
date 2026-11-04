@@ -69,7 +69,28 @@
       : '十一张 = 封面 + ' + (state.mode === 'A' ? '十页' : '五跨页') + '：小红书可以发十张以上。';
   }
 
+  var LS_PHOTOS = 'memento.photos.v1';
+  function savePhotos() {
+    try {
+      localStorage.setItem(LS_PHOTOS, JSON.stringify(state.photos.map(function (p) {
+        return { url: p.url, name: p.name || '' };
+      })));
+    } catch (e) { /* 配额满了就算了，不影响当前编辑 */ }
+  }
+  function loadSavedPhotos() {
+    try {
+      var raw = localStorage.getItem(LS_PHOTOS);
+      if (!raw) return [];
+      var arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr.filter(function (x) { return x && x.url; }) : [];
+    } catch (e) { return []; }
+  }
+
   function buildTray() {
+    var note = document.querySelector('.rail-block .rail-note');
+    if (note) note.textContent = state.photos.length
+      ? '本次 ' + state.photos.length + ' 张（刷新也在）；点一张删掉，可撤销'
+      : '还没有照片：点上面的「选照片」或用示例。';
     el.tray.innerHTML = '';
     state.photos.forEach(function (p) {
       var img = document.createElement('img');
@@ -112,7 +133,7 @@
       if (!rec) failed++;
       if (i % 3 === 2) setStat('正在读 ' + (i + 1) + ' / ' + list.length + '…');
     }
-    buildTray(); rebuild();
+    buildTray(); rebuild(); savePhotos();
     if (failed) toast(failed + ' 张打不开（HEIC 等格式浏览器解不了，先转成 JPG）');
   }
 
@@ -416,6 +437,7 @@
     rebuild();
     toastUndo('删掉 1 张 · 还剩 ' + state.photos.length + ' 张，版已重排', function () {
       state.photos.splice(idx, 0, photo);
+      savePhotos();
       buildTray();
       rebuild();
     });
@@ -496,7 +518,13 @@
   el.btnDemo.onclick = loadDemo;
   el.btnPDF.onclick = function () { doExport('pdf'); };
   el.btnPNG.onclick = function () { doExport('png'); };
-  el.btnShuffle.onclick = function () { state.seed = (state.seed * 7919 + 13) % 100000; rebuild(); };
+  el.btnShuffle.onclick = function () {
+    state.seed = (state.seed * 7919 + 13) % 100000;
+    /* 只换种子等于同一套构图重排照片；连方案一起轮换才看得出「换了一版」 */
+    state.scheme = ((state.scheme || 0) + 1) % 3;
+    buildRail();
+    rebuild();
+  };
   el.pickerClose.onclick = closePicker;
   el.picker.addEventListener('click', function (e) { if (e.target === el.picker) closePicker(); });
   el.lbClose.onclick = closeLightbox;
@@ -508,9 +536,17 @@
     var n = state.zine.pages.length;
     lbIndex = (lbIndex + 1) % n; paintLightbox();
   };
+  /* 手机上地址栏收放只改高度，却会触发 resize；旧代码每次都整页重排，
+     重排瞬间内容高度归零 → 浏览器把滚动位置甩到最底。
+     现在只在「宽度」真的变了（横竖屏、窗口缩放）才重排。 */
+  var lastW = window.innerWidth, rzTimer;
   window.addEventListener('resize', function () {
-    if (!el.lightbox.hidden) paintLightbox();
-    else if (state.zine) paintZine();
+    clearTimeout(rzTimer);
+    rzTimer = setTimeout(function () {
+      if (!el.lightbox.hidden) { paintLightbox(); return; }
+      var w = window.innerWidth;
+      if (state.zine && Math.abs(w - lastW) > 2) { lastW = w; paintZine(); }
+    }, 240);
   });
 
   var tTimer;
@@ -555,7 +591,16 @@
   buildTray();
   rebuild();
 
-  if (manifest) {
+  var saved = loadSavedPhotos();
+  if (saved.length) {
+    setStat('正在恢复上次的 ' + saved.length + ' 张…');
+    (async function () {
+      for (var i = 0; i < saved.length; i++) {
+        await addUrl(saved[i].url, saved[i].name);
+      }
+      buildTray(); rebuild();
+    })();
+  } else if (manifest) {
     fetch(manifest).then(function (r) { return r.json(); })
       .then(function (list) { return loadList(list, '照片'); })
       .catch(function () { hideDemo(); });
