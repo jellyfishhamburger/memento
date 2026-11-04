@@ -18,8 +18,9 @@
   <span id="saveState" class="save-state" data-state="idle" title="本地保存状态"></span>
   <span id="statLine" class="stat">还没有照片</span>
   <button id="btnText" class="btn btn-ghost">文字</button>
-  <button id="btnPhotos" class="btn btn-ghost">照片库</button>
-  <button id="btnLibrary" class="btn btn-ghost">作品库</button>
+  <button id="btnColls" class="btn btn-ghost">照片集合</button>
+  <button id="btnPhotos" class="btn btn-ghost">这本的照片</button>
+  <button id="btnLibrary" class="btn btn-ghost">我的书</button>
   <button id="btnImport" class="btn btn-ghost">导入照片</button>
   <button id="btnVersion" class="btn btn-ghost" disabled>保存版本</button>
   <button id="btnPDF" class="btn btn-ghost" disabled>导出 PDF</button>
@@ -229,7 +230,7 @@
   <div class="saved-card libcard">
     <div class="saved-head">
       <div>
-        <h2 class="saved-title">作品库</h2>
+        <h2 class="saved-title">我的书</h2>
         <p id="libNote" class="saved-note">每本作品有自己的版本；照片存在照片库里，删作品不会删照片。</p>
       </div>
       <button id="libClose" class="picker-close" aria-label="关闭">✕</button>
@@ -243,6 +244,27 @@
     </div>
     <p id="quotaWarn" class="quota-warn" hidden></p>
     <div id="libList" class="lib-list"></div>
+  </div>
+</div>
+
+
+<div id="colls" class="saved" hidden>
+  <div class="saved-card collcard">
+    <div class="saved-head">
+      <div>
+        <h2 class="saved-title">照片集合</h2>
+        <p class="saved-note">一次导入的一批照片就是一个集合。集合只是整理方式 —— 删集合不会删照片，也不会动已经做好的书。</p>
+      </div>
+      <button id="collClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="lib-tools">
+      <button id="collNew" class="btn btn-primary">＋ 新集合</button>
+      <div class="seg seg--sm" id="collTabs" role="group">
+        <button type="button" data-tab="colls" aria-pressed="true">集合</button>
+        <button type="button" data-tab="all" aria-pressed="false">全部照片</button>
+      </div>
+    </div>
+    <div id="collBody"></div>
   </div>
 </div>
 
@@ -291,6 +313,7 @@
 <script src="js/ai/ollama.js"></script>
 <script src="js/ai/provider.js"></script>
 <script src="js/ai/editorial.js"></script>
+<script src="js/collections.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

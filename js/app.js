@@ -12,6 +12,8 @@
     coverPhoto: null
   };
 
+  var batchName = '';      /* the name of the collection this import went into */
+
   var MODES = [
     { key: 'A', name: '编辑杂志', note: '单页构图：主图 + 细节，大片留白' },
     { key: 'B', name: '跨页全景', note: '两张一组：图跨中缝，冲击力优先' },
@@ -553,24 +555,44 @@
     await ensureProject();
     await askPersist();
     setStat('正在读 ' + list.length + ' 张…');
-    var failed = 0, done = 0;
+    var failed = 0, done = 0, made = [];
     for (var i = 0; i < list.length; i++) {
       try {
         var rec = await importFile(list[i]);
-        if (rec) { noteImported(rec); done++; } else failed++;
+        if (rec) { noteImported(rec); done++; made.push(rec); } else failed++;
       } catch (e) { failed++; }
       if (i % 3 === 2) setStat('正在读 ' + (i + 1) + ' / ' + list.length + '…');
     }
+    await batchCollection(made);
+    try { await M.STORE.reconcileCollections(); } catch (e) {}
     buildTray(); rebuild();
     state.coverPhoto = null;
     if (failed) toast(failed + ' 张没存进去（HEIC 等浏览器解不了的格式，先转 JPG）');
-    else if (done) toast('已存进本机 · ' + done + ' 张');
+    else if (done) toast('已存进本机 · ' + done + ' 张' + (made.length ? ' · 归进 ' + batchName + ' 这个集合' : ''));
+  }
+
+  /* one batch of uploads = one collection: the day it was shot if we know it,
+     otherwise today. Nothing is created when nothing was imported. */
+  async function batchCollection(made) {
+    console.log('[batch] called with', made.length);
+    if (!made.length || !M.STORE.createCollection) return null;
+    var t = null;
+    for (var i = 0; i < made.length && !t; i++) if (made[i].takenAt) t = made[i].takenAt;
+    var d = t ? new Date(t) : new Date();
+    var name = (d.getMonth() + 1) + '月' + d.getDate() + '日 的 ' + made.length + ' 张';
+    batchName = name;
+    try {
+      var co = await M.STORE.createCollection({ name: name, coverPhotoId: made[0].id });
+      await M.STORE.addToCollection(co.id, made.map(function (r) { return r.id; }));
+      if (M.COLL && M.COLL.refresh) M.COLL.refresh();
+      return co;
+    } catch (e) { console.error('[batch] failed:', e && e.name, e && e.message); return null; }
   }
 
   /* sample photos / url lists still go through the same door */
   async function loadList(list, label) {
     await ensureProject();
-    var ok = 0;
+    var ok = 0, made = [];
     for (var j = 0; j < list.length; j++) {
       setStat('正在载入 ' + (j + 1) + ' / ' + list.length + '…');
       try {
@@ -578,10 +600,12 @@
         var blob = await r.blob();
         var name = (list[j].name || ('图 ' + (j + 1))) + '.jpg';
         var rec = await importFile(new File([blob], name, { type: blob.type || 'image/jpeg' }));
-        if (rec) { noteImported(rec); ok++; }
+        if (rec) { noteImported(rec); made.push(rec); ok++; }
       } catch (e) { /* skip */ }
     }
     if (!ok) { toast((label || '照片') + '载不进来'); setStat('还没有照片'); return; }
+    await batchCollection(made);
+    try { await M.STORE.reconcileCollections(); } catch (e) {}
     buildTray(); rebuild();
   }
 
@@ -1970,6 +1994,9 @@
     toast('已从照片库删除（作品里引用它的那一格会空出来）');
   }
 
+  var btnColls = document.getElementById('btnColls');
+  if (btnColls && M.COLL) btnColls.onclick = function () { M.COLL.open(); };
+  if (M.COLL) M.COLL.init();
   el.btnPhotos.onclick = openPhotoLibrary;
   if (el.btnPickPhotos) el.btnPickPhotos.onclick = function () { plibFilter = 'out'; openPhotoLibrary(); };
   el.plibClose.onclick = closePhotoLibrary;
@@ -2096,6 +2123,14 @@
   (async function () {
     try {
       await M.STORE.init();
+      if (M.STORE.migrateV2) {
+        try {
+          var mig = await M.STORE.migrateV2();
+          if (mig && !mig.skipped) console.log('[memento] v2 迁移：', JSON.stringify(mig));
+        } catch (eM) { console.warn('[memento] v2 迁移失败，保持原状：', eM); }
+        try { await M.STORE.reconcileCollections(); }
+        catch (eR) { console.warn('[memento] 集合归并失败：', eR); }
+      }
     } catch (e) {
       setSaveState('error', '数据库打不开');
       toast('这台浏览器不允许本地数据库：' + (e && e.message ? e.message : e) + '（照片和作品都不会保存）');
@@ -2124,7 +2159,8 @@
   }
 
   window.__mem = {
-    state: state, rebuild: rebuild, M: M, paint: paintZine,
+    state: state, rebuild: rebuild, M: M, paint: paintZine, toast: toast,
+    store: M.STORE,
     addFiles: addFiles, importFile: importFile, flushSave: flushSave, scheduleSave: scheduleSave,
     snapshot: snapshot, applySnapshot: applySnapshot, ensureProject: ensureProject,
     versionPhotoIds: versionPhotoIds,

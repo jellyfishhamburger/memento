@@ -207,3 +207,20 @@ python -m http.server 8770    # 起本地服务，示例图才读得到
 不写 direction token、不改排版、可整体不调用。
 
 实验产物：`Desktop/MEMENTO_S3实验/`（报告.md + 关系图谱.html）。
+
+## 照片集合（P1+P2 已完成）
+
+IndexedDB 升到 v2，新增三张表，旧表一字不改：
+
+- `collections`：id / name / coverPhotoId / createdAt
+- `collectionPhotos`：集合↔照片（含集合内精选 `starred`、排序 `order`）
+- `bookPhotos`：作品↔照片（含本书主视觉 `hero`、排序 `order`）
+
+规则：
+
+- 删集合只删关联，不删照片、不动作品；被删的照片不会被"自动归并"再塞回去（`prefs.noAutoGroup`）。
+- 同一张照片可以进多个集合、多本书，只存一份文件。
+- 导入一批照片会自动建成一个集合（名字取拍摄日期）；历史照片在启动时按日期归并（`reconcileCollections`，幂等）。
+- 入口拆开：顶栏「照片集合」（集合 / 全部照片）与「我的书」两个独立入口。
+
+验收脚本：`_inspect/arch_test.mjs`（10 项数据完整性检查）。

@@ -5,7 +5,7 @@ window.MEM = window.MEM || {};
   'use strict';
 
   var DB_NAME = 'memento-db';
-  var DB_VERSION = 1;
+  var DB_VERSION = 2;
   var dbp = null;
 
   function open() {
@@ -30,6 +30,22 @@ window.MEM = window.MEM || {};
         }
         if (!db.objectStoreNames.contains('prefs')) {
           db.createObjectStore('prefs', { keyPath: 'key' });
+        }
+        /* v2: collections are the layer between photos and books.
+           photos/projects/versions are left exactly as they were. */
+        if (!db.objectStoreNames.contains('collections')) {
+          var co = db.createObjectStore('collections', { keyPath: 'id' });
+          co.createIndex('createdAt', 'createdAt');
+        }
+        if (!db.objectStoreNames.contains('collectionPhotos')) {
+          var cp = db.createObjectStore('collectionPhotos', { keyPath: 'id' });
+          cp.createIndex('collectionId', 'collectionId');
+          cp.createIndex('photoId', 'photoId');
+        }
+        if (!db.objectStoreNames.contains('bookPhotos')) {
+          var bp = db.createObjectStore('bookPhotos', { keyPath: 'id' });
+          bp.createIndex('bookId', 'bookId');
+          bp.createIndex('photoId', 'photoId');
         }
       };
       req.onsuccess = function () { resolve(req.result); };
@@ -261,6 +277,331 @@ window.MEM = window.MEM || {};
       });
     },
 
+    /* ---------------- collections (v2) ---------------- */
+    createCollection: function (opt) {
+      opt = opt || {};
+      var now = Date.now();
+      var co = {
+        id: uid('co'),
+        name: opt.name || '未命名的集合',
+        description: opt.description || '',
+        coverPhotoId: opt.coverPhotoId || null,
+        createdAt: now,
+        updatedAt: now,
+        schemaVersion: 2
+      };
+      return tx(['collections'], 'readwrite').then(function (t) {
+        t.objectStore('collections').put(co);
+        return done(t).then(function () { return co; });
+      });
+    },
+    getCollection: function (id) {
+      return tx(['collections']).then(function (t) { return wrap(t.objectStore('collections').get(id)); });
+    },
+    listCollections: function () {
+      return tx(['collections']).then(function (t) { return wrap(t.objectStore('collections').getAll()); })
+        .then(function (list) { return list.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); }); });
+    },
+    updateCollection: function (id, patch) {
+      return api.getCollection(id).then(function (co) {
+        if (!co) return null;
+        Object.keys(patch || {}).forEach(function (k) { co[k] = patch[k]; });
+        co.updatedAt = Date.now();
+        return tx(['collections'], 'readwrite').then(function (t) {
+          t.objectStore('collections').put(co);
+          return done(t).then(function () { return co; });
+        });
+      });
+    },
+    /* deleting a collection removes the links, never the photos, never a book */
+    deleteCollection: function (id) {
+      return api.listCollectionPhotos(id).then(function (links) {
+        // remember these photos: the user took them out on purpose, so the
+        // self-healing pass must not put them straight back into a new one
+        return api.getPref('noAutoGroup', []).then(function (prev) {
+          var set = {};
+          (prev || []).forEach(function (x) { set[x] = 1; });
+          links.forEach(function (l) { set[l.photoId] = 1; });
+          return api.setPref('noAutoGroup', Object.keys(set));
+        }).then(function () { return links; });
+        return tx(['collectionPhotos'], 'readwrite').then(function (t) {
+          links.forEach(function (l) { t.objectStore('collectionPhotos').delete(l.id); });
+          return done(t);
+        });
+      }).then(function () {
+        return tx(['collections'], 'readwrite').then(function (t) {
+          t.objectStore('collections').delete(id);
+          return done(t);
+        });
+      });
+    },
+    addToCollection: function (collectionId, photoIds) {
+      var ids = (photoIds || []).slice();
+      return api.listCollectionPhotos(collectionId).then(function (existing) {
+        var have = {};
+        existing.forEach(function (l) { have[l.photoId] = 1; });
+        var order = existing.reduce(function (a, l) { return Math.max(a, l.order || 0); }, 0);
+        var added = [];
+        ids.forEach(function (pid) {
+          if (have[pid]) return;
+          added.push({
+            id: collectionId + ':' + pid,
+            collectionId: collectionId,
+            photoId: pid,
+            starred: false,
+            order: ++order,
+            addedAt: Date.now()
+          });
+        });
+        if (!added.length) return { added: 0 };
+        return tx(['collectionPhotos'], 'readwrite').then(function (t) {
+          added.forEach(function (l) { t.objectStore('collectionPhotos').put(l); });
+          return done(t).then(function () { return { added: added.length }; });
+        });
+      }).then(function (res) {
+        return api.getCollection(collectionId).then(function (co) {
+          if (co && !co.coverPhotoId && ids.length) {
+            return api.updateCollection(collectionId, { coverPhotoId: ids[0] }).then(function () { return res; });
+          }
+          return res;
+        });
+      });
+    },
+    removeFromCollection: function (collectionId, photoId) {
+      return tx(['collectionPhotos'], 'readwrite').then(function (t) {
+        t.objectStore('collectionPhotos').delete(collectionId + ':' + photoId);
+        return done(t).then(function () { return true; });
+      });
+    },
+    listCollectionPhotos: function (collectionId) {
+      return tx(['collectionPhotos']).then(function (t) {
+        return wrap(t.objectStore('collectionPhotos').index('collectionId').getAll(collectionId));
+      }).then(function (list) { return list.sort(function (a, b) { return (a.order || 0) - (b.order || 0); }); });
+    },
+    setCollectionStar: function (collectionId, photoId, starred) {
+      var key = collectionId + ':' + photoId;
+      return tx(['collectionPhotos'], 'readwrite').then(function (t) {
+        var st = t.objectStore('collectionPhotos');
+        return wrap(st.get(key)).then(function (l) {
+          if (!l) return false;
+          l.starred = !!starred;
+          st.put(l);
+          return done(t).then(function () { return true; });
+        });
+      });
+    },
+    collectionsOfPhoto: function (photoId) {
+      return tx(['collectionPhotos']).then(function (t) {
+        return wrap(t.objectStore('collectionPhotos').index('photoId').getAll(photoId));
+      });
+    },
+    /* every photo not linked to any collection (so nothing becomes invisible) */
+    photosWithoutCollection: function () {
+      return Promise.all([api.getAllPhotos(), tx(['collectionPhotos']).then(function (t) {
+        return wrap(t.objectStore('collectionPhotos').getAll());
+      })]).then(function (r) {
+        var linked = {};
+        r[1].forEach(function (l) { linked[l.photoId] = 1; });
+        return r[0].filter(function (p) { return !linked[p.id]; });
+      });
+    },
+
+    /* Self-healing grouping: any photo that belongs to no collection gets
+       folded into a dated collection. Runs before the collections view opens,
+       so imports (and old data) always end up organised without a special
+       code path. Idempotent — photos already linked are left alone. */
+    reconcileCollections: function () {
+      return Promise.all([api.getAllPhotos(), api.listCollections(),
+        tx(['collectionPhotos']).then(function (t) {
+          return wrap(t.objectStore('collectionPhotos').getAll());
+        })]).then(function (r) {
+        var photos = r[0], colls = r[1], links = r[2];
+        var linked = {};
+        links.forEach(function (l) { linked[l.photoId] = 1; });
+        var loose = photos.filter(function (p) { return !linked[p.id]; });
+        if (!loose.length) return { created: 0, linked: 0 };
+
+        return api.getPref('noAutoGroup', []).then(function (skipIds) {
+        var skip = {};
+        (skipIds || []).forEach(function (x) { skip[x] = 1; });
+        loose = loose.filter(function (p) { return !skip[p.id]; });
+        if (!loose.length) return { created: 0, linked: 0 };
+
+        var byDay = {};
+        loose.forEach(function (p) {
+          var t = p.takenAt || p.importedAt || p.createdAt || Date.now();
+          var d = new Date(t);
+          var key = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+          (byDay[key] = byDay[key] || []).push(p);
+        });
+        var made = 0, put = 0;
+        var chain = Promise.resolve();
+        Object.keys(byDay).sort().forEach(function (key) {
+          chain = chain.then(function () {
+            var group = byDay[key].sort(function (a, b) {
+              return (a.takenAt || a.importedAt || 0) - (b.takenAt || b.importedAt || 0);
+            });
+            var label = key.slice(5, 7).replace(/^0/, '') + '月' + key.slice(8).replace(/^0/, '') + '日 的 ' + group.length + ' 张';
+            var same = colls.filter(function (c) { return c.name === label; })[0];
+            var mk = same ? Promise.resolve(same) : api.createCollection({ name: label, coverPhotoId: group[0].id });
+            return mk.then(function (co) {
+              if (!same) made++;
+              return api.addToCollection(co.id, group.map(function (p) { return p.id; })).then(function (res) {
+                put += (res && res.added) || 0;
+                return api.listCollectionPhotos(co.id).then(function (ls) {
+                  var starred = group.filter(function (p) { return p.starred; });
+                  return starred.reduce(function (pr, p) { return pr.then(function () { return api.setCollectionStar(co.id, p.id, true); }); }, Promise.resolve());
+                });
+              });
+            });
+          });
+        });
+        return chain.then(function () { return { created: made, linked: put }; });
+        });
+      });
+    },
+
+    /* ---------------- book ↔ photo (v2) ---------------- */
+    /* the relation table is the source of truth; projects.settings.photoIds is
+       still written for older snapshots, never read first */
+    setBookPhotos: function (bookId, photoIds) {
+      var ids = (photoIds || []).slice();
+      return api.listBookPhotos(bookId).then(function (existing) {
+        return tx(['bookPhotos'], 'readwrite').then(function (t) {
+          var st = t.objectStore('bookPhotos');
+          var keep = {};
+          ids.forEach(function (pid, i) {
+            keep[pid] = 1;
+            var prev = existing.filter(function (l) { return l.photoId === pid; })[0] || {};
+            st.put({
+              id: bookId + ':' + pid, bookId: bookId, photoId: pid,
+              hero: !!prev.hero, order: i, addedAt: prev.addedAt || Date.now()
+            });
+          });
+          existing.forEach(function (l) {
+            if (!keep[l.photoId]) st.delete(l.id);
+          });
+          return done(t).then(function () { return ids.length; });
+        });
+      });
+    },
+    listBookPhotos: function (bookId) {
+      return tx(['bookPhotos']).then(function (t) {
+        return wrap(t.objectStore('bookPhotos').index('bookId').getAll(bookId));
+      }).then(function (list) { return list.sort(function (a, b) { return (a.order || 0) - (b.order || 0); }); });
+    },
+    setBookHero: function (bookId, photoId, hero) {
+      var key = bookId + ':' + photoId;
+      return tx(['bookPhotos'], 'readwrite').then(function (t) {
+        var st = t.objectStore('bookPhotos');
+        return wrap(st.get(key)).then(function (l) {
+          if (!l) return false;
+          l.hero = !!hero;
+          st.put(l);
+          return done(t).then(function () { return true; });
+        });
+      });
+    },
+    /* which books use this photo — relation table first, old snapshots as fallback */
+    booksUsingPhoto: function (photoId) {
+      return api.listProjects().then(function (projects) {
+        return tx(['bookPhotos']).then(function (t) {
+          return wrap(t.objectStore('bookPhotos').index('photoId').getAll(photoId));
+        }).then(function (links) {
+          var hit = {};
+          links.forEach(function (l) { hit[l.bookId] = 1; });
+          var ids = Object.keys(hit);
+          if (ids.length) return projects.filter(function (p) { return hit[p.id]; });
+          /* legacy work without relations: look inside versions */
+          return api.listVersions().then(function (versions) {
+            return projects.filter(function (pr) {
+              return versions.some(function (v) {
+                if (v.projectId !== pr.id || !v.snapshot) return false;
+                var snap = v.snapshot;
+                if ((snap.photoIds || []).indexOf(photoId) >= 0) return true;
+                return (snap.pages || []).some(function (pg) {
+                  return (pg.frames || []).some(function (f) { return f.p === photoId; });
+                });
+              });
+            });
+          });
+        });
+      });
+    },
+
+    /* ---------------- migration v1 → v2 ---------------- */
+    /* Idempotent: it only creates what is missing and flips one pref at the end.
+       Existing photos/projects/versions are read, never rewritten. */
+    migrateV2: function () {
+      return api.getPref('migratedV2', null).then(function (doneFlag) {
+        if (doneFlag === true) return { skipped: true };
+        return api.getAllPhotos().then(function (photos) {
+          return api.listProjects().then(function (projects) {
+            return api.listVersions().then(function (versions) {
+              var byDay = {};
+              photos.forEach(function (p) {
+                var t = p.importedAt || p.createdAt || Date.now();
+                var d = new Date(t);
+                var key = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+                (byDay[key] = byDay[key] || []).push(p);
+              });
+              var days = Object.keys(byDay).sort();
+              var madeColls = 0, madeLinks = 0;
+              var chain = Promise.resolve();
+              days.forEach(function (key) {
+                chain = chain.then(function () {
+                  var group = byDay[key].sort(function (a, b) { return (a.importedAt || 0) - (b.importedAt || 0); });
+                  var label = key.slice(5).replace('-', '月') + '日 的一批';
+                  return api.createCollection({ name: label, coverPhotoId: group[0] ? group[0].id : null })
+                    .then(function (co) {
+                      madeColls++;
+                      return api.addToCollection(co.id, group.map(function (p) { return p.id; }))
+                        .then(function () {
+                          madeLinks += group.length;
+                          var starred = group.filter(function (p) { return p.starred; });
+                          return starred.reduce(function (pr, p) {
+                            return pr.then(function () { return api.setCollectionStar(co.id, p.id, true); });
+                          }, Promise.resolve());
+                        });
+                    });
+                });
+              });
+              /* books: relations from the newest draft, else from settings */
+              var madeBookLinks = 0;
+              chain = chain.then(function () {
+                return projects.reduce(function (pr, book) {
+                  return pr.then(function () {
+                    var own = versions.filter(function (v) { return v.projectId === book.id; });
+                    var draft = own.filter(function (v) { return v.isAutoSaved; })[0] ||
+                      own.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); })[0];
+                    var ids = (draft && draft.snapshot && draft.snapshot.photoIds) ||
+                      ((book.settings || {}).photoIds) || [];
+                    if (!ids.length) return null;
+                    madeBookLinks += ids.length;
+                    return api.setBookPhotos(book.id, ids).then(function () {
+                      var starred = photos.filter(function (p) { return ids.indexOf(p.id) >= 0 && p.starred; });
+                      return starred.reduce(function (x, p) {
+                        return x.then(function () { return api.setBookHero(book.id, p.id, true); });
+                      }, Promise.resolve());
+                    });
+                  });
+                }, Promise.resolve());
+              });
+              return chain.then(function () {
+                var report = {
+                  at: Date.now(), collections: madeColls, collectionLinks: madeLinks,
+                  books: projects.length, bookLinks: madeBookLinks
+                };
+                return api.setPref('migratedV2', true).then(function () {
+                  return api.setPref('migratedV2Report', report).then(function () { return report; });
+                });
+              });
+            });
+          });
+        });
+      });
+    },
+
     /* ---------------- preferences ---------------- */
     getPref: function (key, fallback) {
       return tx(['prefs']).then(function (t) { return wrap(t.objectStore('prefs').get(key)); })
@@ -295,7 +636,8 @@ window.MEM = window.MEM || {};
     /* ---------------- wipe (tests / settings) ---------------- */
     clearAll: function () {
       return open().then(function (db) {
-        return Promise.all(['photos', 'projects', 'versions', 'prefs'].map(function (name) {
+        return Promise.all(['photos', 'projects', 'versions', 'prefs',
+          'collections', 'collectionPhotos', 'bookPhotos'].map(function (name) {
           return new Promise(function (res, rej) {
             var t = db.transaction([name], 'readwrite');
             t.objectStore(name).clear();
