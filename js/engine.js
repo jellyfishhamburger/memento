@@ -99,9 +99,10 @@ window.MEM = window.MEM || {};
   var RECIPES = {
     1: ['full', 'full', 'boxed'],
     2: ['split62', 'split38', 'split50', 'stack2', 'inset'],
-    3: ['hero2', 'top3', 'band3'],
+    3: ['top3', 'band3', 'top3'],
     4: ['quad', 'hero3', 'duoPair'],
-    6: ['contact6', 'strip6'],
+    5: ['plate5', 'hero5', 'plate5'],
+    6: ['hero6', 'strip6', 'contact6'],
     8: ['contact8']
   };
 
@@ -136,13 +137,10 @@ window.MEM = window.MEM || {};
       return [top, p[0], p[1]];
     },
     band3: function (st) {
-      // one wide band across the top, two stacked on the left below
-      var b = B(st), cut = 0.5;
-      var top = { x: 0, y: 0, w: 1, h: cut };
-      var bot = { x: b.x, y: cut + st.gutter, w: b.w, h: 1 - b.y - (cut + st.gutter) };
-      var p = vsplit(bot, 0.36, st.gutter);
-      var q = hsplit(p[0], 0.5, st.gutter);
-      return [top, q[0], q[1]];
+      // hero on the left, two stacked on the right — no dead column
+      var b = B(st), p = vsplit(b, 0.63, st.gutter);
+      var q = hsplit(p[1], 0.5, st.gutter);
+      return [p[0], q[0], q[1]];
     },
     quad: function (st) {
       var b = B(st), p = vsplit(b, 0.575, st.gutter);
@@ -162,7 +160,41 @@ window.MEM = window.MEM || {};
       return [a[0], a[1], c[0], c[1]];
     },
     contact6: function (st) { return grid(2, 3, st.margin, st.gutter); },
+    /* six as a plate page: one big, two right, three under — not a contact sheet */
+    hero6: function (st) {
+      var b = B(st), g = st.gutter;
+      var bigW = b.w * 0.62 - g / 2;
+      var rightX = b.x + b.w * 0.62 + g / 2, rightW = b.w * 0.38 - g / 2;
+      var splitY = b.h * 0.6;
+      var big = { x: b.x, y: b.y, w: bigW, h: splitY - g / 2 };
+      var r1 = { x: rightX, y: b.y, w: rightW, h: splitY * 0.5 - g / 2 };
+      var r2 = { x: rightX, y: b.y + splitY * 0.5 + g / 2, w: rightW, h: splitY * 0.5 - g / 2 };
+      var by = b.y + splitY + g / 2, bh = b.h - splitY - g / 2, cw = (b.w - 2 * g) / 3;
+      return [big, r1, r2,
+        { x: b.x, y: by, w: cw, h: bh },
+        { x: b.x + cw + g, y: by, w: cw, h: bh },
+        { x: b.x + 2 * (cw + g), y: by, w: cw, h: bh }];
+    },
     contact8: function (st) { return grid(2, 4, st.margin, st.gutter); },
+    /* five on a square page: two up top, three below — no cell narrower than 3:4 */
+    plate5: function (st) {
+      var b = B(st), g = st.gutter;
+      var hTop = b.h * 0.545 - g / 2, hBot = b.h * 0.455 - g / 2;
+      var top = vsplit({ x: b.x, y: b.y, w: b.w, h: hTop }, 0.5, g);
+      var y2 = b.y + b.h * 0.545 + g / 2;
+      var cw = (b.w - 2 * g) / 3;
+      var bot = [0, 1, 2].map(function (i) {
+        return { x: b.x + i * (cw + g), y: y2, w: cw, h: hBot };
+      });
+      return top.concat(bot);
+    },
+    /* five: tall hero + four stacked, all landscape-friendly */
+    hero5: function (st) {
+      var b = B(st), g = st.gutter, p = vsplit(b, 0.62, g);
+      var col = p[1], h = (col.h - 3 * g) / 4, out = [p[0]];
+      for (var i = 0; i < 4; i++) out.push({ x: col.x, y: col.y + i * (h + g), w: col.w, h: h });
+      return out;
+    },
     strip6: function (st) {
       // 3 across, 2 down, but the top row shorter — a contact sheet with a rhythm
       var b = B(st);
@@ -530,6 +562,17 @@ window.MEM = window.MEM || {};
     var key = pool[Math.floor(rand() * pool.length)];
     var maker = MAKERS[key] || MAKERS.full;
     var slots = maker(st);
+    // a recipe that does not make exactly one frame per photo would silently drop one
+    if (slots.length !== photos.length) {
+      for (var mi = 0; mi < pool.length; mi++) {
+        var alt = MAKERS[pool[mi]](st);
+        if (alt && alt.length === photos.length) { slots = alt; key = pool[mi]; break; }
+      }
+      if (slots.length !== photos.length) {
+        slots = photos.map(function () { return { x: 0, y: 0, w: 1, h: 1 }; });
+        key = 'full';
+      }
+    }
     var chosen = assign(slots, photos, st, rand, pageAR);
     addFrames(page, slots, chosen);
     addSprockets(page, st);
@@ -539,6 +582,40 @@ window.MEM = window.MEM || {};
   }
 
   /* ---------------- page plan ---------------- */
+  /* Exact page count: split n photos over k pages using only counts that have a
+     recipe. Without this a 40-photo, 9-page book drags a lonely 2-photo page. */
+  function planExact(n, k, allowed) {
+    if (k <= 0) return n === 0 ? [] : null;
+    var lo = allowed[0], hi = allowed[allowed.length - 1];
+    if (n < k * lo || n > k * hi) return null;
+    var memo = {};
+    function go(rem, parts) {
+      if (parts === 0) return rem === 0 ? [] : null;
+      var key = rem + ':' + parts;
+      if (key in memo) return memo[key];
+      for (var i = allowed.length - 1; i >= 0; i--) {
+        var a = allowed[i];
+        if (rem - a < (parts - 1) * lo || rem - a > (parts - 1) * hi) continue;
+        var sub = go(rem - a, parts - 1);
+        if (sub) { memo[key] = [a].concat(sub); return memo[key]; }
+      }
+      memo[key] = null;
+      return null;
+    }
+    return go(n, k);
+  }
+
+  /* big / small alternating so no two dense pages follow each other */
+  function rhythmise(list) {
+    var a = list.slice().sort(function (x, y) { return y - x; });
+    var out = [], small = true;
+    while (a.length) {
+      out.push(small ? a.pop() : a.shift());
+      small = !small;
+    }
+    return out;
+  }
+
   /* A page that cannot be laid out (no recipe for its photo count) is merged into
      its neighbour, or split — never left as a lonely 2-photo contact sheet. */
   function fitCounts(counts) {
@@ -595,25 +672,39 @@ window.MEM = window.MEM || {};
     var counts = [];
     var remaining = ordered.length;
 
-    if (st.perPage) {
-      // contact-sheet styles fill pages evenly — pick the page count whose
-      // per-page numbers all have a real recipe
-      var start = Math.max(1, Math.ceil(remaining / st.perPage));
-      var found = null;
-      for (var k = start; k <= Math.max(1, remaining); k++) {
-        var b2 = Math.floor(remaining / k), ex = remaining % k, trial = [];
-        for (var t = 0; t < k; t++) trial.push(b2 + (t < ex ? 1 : 0));
-        if (trial.every(function (c) { return !!RECIPES[c]; })) { found = trial; break; }
-      }
-      counts = found || [remaining];
-    } else {
-      var ri = 0;
-      while (remaining > 0) {
-        var want = st.rhythm[ri % st.rhythm.length];
-        var take = Math.min(want, remaining);
-        counts.push(take);
-        remaining -= take;
-        ri++;
+    if (opt.pages && opt.pages > 1) {
+      var allowed = Object.keys(RECIPES).map(Number).sort(function (a, b) { return a - b; });
+      // stay near the average: a 9-page book of one-photo and eight-photo pages
+      // is a plan, not a rhythm
+      var avg = remaining / (opt.pages - 1);
+      var mid = allowed.filter(function (a) {
+        return a >= Math.max(2, Math.floor(avg)) && a <= Math.min(6, Math.ceil(avg) + 1);
+      });
+      var plan = planExact(remaining, opt.pages - 1, mid.length ? mid : allowed);
+      counts = plan ? rhythmise(plan) : [];
+    }
+
+    if (!counts.length) {
+      if (st.perPage) {
+        // contact-sheet styles fill pages evenly — pick the page count whose
+        // per-page numbers all have a real recipe
+        var start = Math.max(1, Math.ceil(remaining / st.perPage));
+        var found = null;
+        for (var k = start; k <= Math.max(1, remaining); k++) {
+          var b2 = Math.floor(remaining / k), ex = remaining % k, trial = [];
+          for (var t = 0; t < k; t++) trial.push(b2 + (t < ex ? 1 : 0));
+          if (trial.every(function (c) { return !!RECIPES[c]; })) { found = trial; break; }
+        }
+        counts = found || [remaining];
+      } else {
+        var ri = 0;
+        while (remaining > 0) {
+          var want = st.rhythm[ri % st.rhythm.length];
+          var take = Math.min(want, remaining);
+          counts.push(take);
+          remaining -= take;
+          ri++;
+        }
       }
     }
     counts = fitCounts(counts);

@@ -6,14 +6,15 @@
   var state = {
     photos: [], pages: [], grid: null,
     mode: 'book', style: 'editorial', plan: 'hero', format: 'portrait', layout: 'paper',
-    fill: 'mosaic', excluded: {}, seed: 11, title: '十一月的海',
+    fill: 'mosaic', pageTarget: 0, excluded: {}, seed: 11, title: '十一月的海',
     year: new Date().getFullYear(), busy: false
   };
 
   var $ = function (s) { return document.querySelector(s); };
   var el = {
     styles: $('#styles'), plans: $('#plans'), formats: $('#formats'), layouts: $('#layouts'),
-    fills: $('#fills'),
+    fills: $('#fills'), pageTargets: $('#pageTargets'), pageNote: $('#pageNote'),
+    blockPages: $('#blockPages'),
     tray: $('#tray'), modes: $('#modes'),
     pages: $('#pages'), empty: $('#empty'), stat: $('#statLine'),
     gridPanel: $('#gridPanel'), gridWrap: $('#gridWrap'), gridStrip: $('#gridStrip'),
@@ -43,6 +44,12 @@
     el.blockStyles.hidden = isGrid;
     el.blockFormat.hidden = isGrid;
     el.blockGrid.hidden = !isGrid;
+    el.blockPages.hidden = isGrid;
+
+    Array.prototype.forEach.call(el.pageTargets.children, function (b) {
+      b.setAttribute('aria-pressed', String(Number(b.dataset.pages) === state.pageTarget));
+    });
+    el.pageNote.hidden = state.pageTarget === 0;
 
     Array.prototype.forEach.call(el.fills.children, function (b) {
       b.setAttribute('aria-pressed', String(b.dataset.fill === state.fill));
@@ -100,6 +107,7 @@
       var b = document.createElement('button');
       b.type = 'button'; b.textContent = f.label;
       b.setAttribute('aria-pressed', String(state.format === k));
+      b.disabled = state.pageTarget > 0 && k !== 'square';
       b.onclick = function () { state.format = k; buildOptions(); rebuild(); };
       el.formats.appendChild(b);
     });
@@ -213,7 +221,8 @@
     el.pages.hidden = false;
     var res = M.build(photos, {
       style: state.style, plan: state.plan, format: state.format,
-      seed: state.seed, title: state.title || '未命名的一卷', year: state.year
+      seed: state.seed, title: state.title || '未命名的一卷', year: state.year,
+      pages: state.pageTarget || 0
     });
     state.pages = res.pages;
     setStat(photos.length + ' 张 · ' + res.pages.length + ' 页');
@@ -401,6 +410,14 @@
     buildOptions();
     rebuild();
   });
+  el.pageTargets.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-pages]');
+    if (!b) return;
+    state.pageTarget = Number(b.dataset.pages) || 0;
+    if (state.pageTarget > 0) state.format = 'square';
+    buildOptions();
+    rebuild();
+  });
   el.btnImport.onclick = el.btnPick.onclick = function () { el.file.click(); };
   el.file.onchange = function (e) { addFiles(e.target.files); el.file.value = ''; };
   el.btnDemo.onclick = loadDemo;
@@ -458,6 +475,10 @@
       if (k === 'fill' && v !== 'single' && v !== 'mosaic') return;
       state[k] = v;
     });
+    if (qs.get('pages')) {
+      state.pageTarget = parseInt(qs.get('pages'), 10) || 0;
+      if (state.pageTarget > 0) state.format = 'square';
+    }
     if (qs.get('pick')) {
       pickList = qs.get('pick').split(',').map(function (s) { return parseInt(s, 10); })
         .filter(function (n) { return n > 0; });
