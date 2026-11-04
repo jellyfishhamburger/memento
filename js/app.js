@@ -305,7 +305,7 @@
     if (!z || !z.pages.length) return;
     el.zineList.innerHTML = '';
     var stageW = el.zineList.clientWidth || 1000;
-    var scale = Math.min(0.62, (stageW - 6) / (2 * z.pages[0].w));
+    var scale = Math.min((stageW - 6) / (2 * z.pages[0].w), 520 / z.pages[0].h);
 
     function pageBtn(pg, pi, label) {
       var btn = document.createElement('button');
