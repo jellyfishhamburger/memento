@@ -15,9 +15,12 @@
   </div>
   <input id="titleInput" class="title-input" value="十一月的海" aria-label="作品标题" spellcheck="false">
   <div class="bar-spacer"></div>
+  <span id="saveState" class="save-state" data-state="idle" title="本地保存状态"></span>
   <span id="statLine" class="stat">还没有照片</span>
   <button id="btnText" class="btn btn-ghost">文字</button>
+  <button id="btnLibrary" class="btn btn-ghost">作品库</button>
   <button id="btnImport" class="btn btn-ghost">导入照片</button>
+  <button id="btnVersion" class="btn btn-ghost" disabled>保存版本</button>
   <button id="btnPDF" class="btn btn-ghost" disabled>导出 PDF</button>
   <button id="btnPNG" class="btn btn-primary" disabled>导出九张</button>
 </header>
@@ -147,14 +150,54 @@
   </div>
 </div>
 
+<div id="versions" class="saved" hidden>
+  <div class="saved-card vcard">
+    <div class="saved-head">
+      <div>
+        <h2 class="saved-title">版本历史</h2>
+        <p id="verNote" class="saved-note">每一版都是一个快照；恢复旧版不会删掉任何一版。</p>
+      </div>
+      <button id="verClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="ver-new">
+      <input id="verName" class="ver-input" placeholder="这一版叫什么？（可以不填）" maxlength="40">
+      <button id="verSave" class="btn btn-primary">保存为新版本</button>
+    </div>
+    <div id="verList" class="ver-list"></div>
+  </div>
+</div>
+
+<div id="library" class="saved" hidden>
+  <div class="saved-card libcard">
+    <div class="saved-head">
+      <div>
+        <h2 class="saved-title">作品库</h2>
+        <p id="libNote" class="saved-note">每本作品有自己的版本；照片存在照片库里，删作品不会删照片。</p>
+      </div>
+      <button id="libClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="lib-tools">
+      <button id="libNew" class="btn btn-primary">＋ 新建作品</button>
+      <button id="libBackup" class="btn btn-ghost">导出全部备份</button>
+      <button id="libImport" class="btn btn-ghost">导入备份</button>
+      <span id="libQuota" class="lib-quota"></span>
+    </div>
+    <div id="libList" class="lib-list"></div>
+  </div>
+</div>
+
+<input type="file" id="backupInput" accept=".memento,.zip" hidden>
 <div id="toast" class="toast" hidden></div>
 
 <script src="js/analyze.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/objects.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/spread.js"></script>
 <script src="js/compose.js"></script>
 <script src="js/render.js"></script>
 <script src="js/export.js"></script>
+<script src="js/backup.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

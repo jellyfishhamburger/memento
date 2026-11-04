@@ -378,3 +378,37 @@ body.solo-mode .page-wrap{margin:0}
 .saved-item span{position:absolute;left:6px;bottom:6px;font-size:9px;letter-spacing:.1em;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8)}
 .saved-item:hover img{opacity:.88}
 @media (max-width:900px){.saved-grid{grid-template-columns:repeat(2,1fr)}.saved{padding:0}.saved-card{max-height:100vh;height:100%;border-radius:0}}
+
+/* ---------- save state / versions ---------- */
+.save-state{font-size:11px;letter-spacing:.04em;color:var(--faint);cursor:pointer;white-space:nowrap;padding:2px 6px;border-radius:2px}
+.save-state[data-state="pending"],.save-state[data-state="saving"]{color:var(--muted)}
+.save-state[data-state="saved"]{color:#4a6b4a}
+.save-state[data-state="error"]{color:#9d3a2a;font-weight:500;text-decoration:underline;text-underline-offset:2px}
+.save-state:hover{background:rgba(26,24,21,.06)}
+.vcard{max-width:720px}
+.ver-new{display:flex;gap:8px;padding:14px 22px;border-bottom:1px solid var(--line)}
+.ver-input{flex:1;min-width:0;height:32px;padding:0 10px;font-size:13px;background:var(--paper);border:1px solid var(--line);border-radius:2px;color:var(--ink)}
+.ver-list{overflow:auto;padding:6px 22px 20px}
+.ver-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.ver-row:last-child{border-bottom:0}
+.ver-no{font-size:12px;letter-spacing:.06em;width:44px;color:var(--ink);font-variant-numeric:tabular-nums}
+.ver-meta{flex:1;min-width:0}
+.ver-desc{font-size:12.5px;color:var(--ink);margin:0 0 2px}
+.ver-sub{font-size:11px;color:var(--faint)}
+.ver-row .btn{height:26px;padding:0 9px;font-size:11.5px}
+.ver-row.is-current .ver-no{color:#4a6b4a}
+
+/* ---------- library ---------- */
+.libcard{max-width:760px}
+.lib-tools{display:flex;gap:8px;align-items:center;padding:14px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.lib-quota{margin-left:auto;font-size:11px;color:var(--faint)}
+.lib-list{overflow:auto;padding:6px 22px 22px}
+.lib-row{display:flex;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.lib-cover{width:52px;height:70px;flex:none;background:var(--paper-2);overflow:hidden;border:1px solid var(--line)}
+.lib-cover img{width:100%;height:100%;object-fit:cover;display:block}
+.lib-meta{flex:1;min-width:0}
+.lib-title{font-size:13.5px;margin:0 0 3px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lib-sub{font-size:11px;color:var(--faint)}
+.lib-row.is-open .lib-title{color:#4a6b4a}
+.lib-row .btn{height:26px;padding:0 9px;font-size:11.5px}
+.lib-row.is-open .lib-title::after{content:" · 正在编辑";color:#4a6b4a;font-size:10.5px}

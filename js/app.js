@@ -7,7 +7,9 @@
   var state = {
     photos: [], zine: null, seed: 11, mode: 'C', scheme: 0, count: 9,
     title: '十一月的海', year: new Date().getFullYear(), busy: false, locked: {},
-    direction: 'zine', texts: {}
+    direction: 'zine', texts: {},
+    library: [],          // every photo in the browser database
+    coverPhoto: null
   };
 
   var MODES = [
@@ -44,7 +46,13 @@
     picker: $('#picker'), pickerGrid: $('#pickerGrid'), pickerTitle: $('#pickerTitle'),
     pickerNote: $('#pickerNote'), pickerClose: $('#pickerClose'),
     pickerCrop: $('#pickerCrop'), cropBox: $('#cropBox'),
-    toast: $('#toast'),
+    toast: $('#toast'), saveState: $('#saveState'),
+    versions: $('#versions'), verList: $('#verList'), verName: $('#verName'),
+    verSave: $('#verSave'), verClose: $('#verClose'), verNote: $('#verNote'),
+    btnVersion: $('#btnVersion'), btnLibrary: $('#btnLibrary'),
+    library: $('#library'), libList: $('#libList'), libNote: $('#libNote'), libQuota: $('#libQuota'),
+    libNew: $('#libNew'), libBackup: $('#libBackup'), libImport: $('#libImport'),
+    libClose: $('#libClose'), backupInput: $('#backupInput'),
     saved: $('#saved'), savedGrid: $('#savedGrid'), savedNote: $('#savedNote'),
     savedTitle: $('#savedTitle'), savedClose: $('#savedClose')
   };
@@ -224,13 +232,9 @@
       return Array.isArray(arr) ? arr : [];
     } catch (e) { return []; }
   }
-  function savePhotos() {
-    try {
-      localStorage.setItem(LS_PHOTOS, JSON.stringify(state.photos.map(function (p) {
-        return { url: p.url, name: p.name || '' };
-      })));
-    } catch (e) { /* 配额满了就算了，不影响当前编辑 */ }
-  }
+  /* photos live in IndexedDB now; this only keeps the old key readable for migration */
+  function savePhotos() { /* retired */ }
+
   function loadSavedPhotos() {
     try {
       var raw = localStorage.getItem(LS_PHOTOS);
@@ -263,6 +267,7 @@
         e.stopPropagation();
         p.starred = !p.starred;
         saveStars();
+        M.STORE.setStarred(photo.id, !!photo.starred).catch(function () {});
         buildTray(); rebuild();
       };
       wrap.appendChild(img); wrap.appendChild(star);
@@ -270,47 +275,112 @@
     });
   }
 
-  /* ---------------- import ---------------- */
-  var seq = 0;
-  function addUrl(url, name) {
-    return new Promise(function (resolve) {
+  /* ---------------- import (photo library → IndexedDB) ---------------- */
+  function loadImage(url) {
+    return new Promise(function (res, rej) {
       var img = new Image();
-      img.onload = async function () {
-        var rec = await M.analyze(img, { id: 'p' + (++seq), name: name, url: url });
-        try {
-          var small = await M.shrink(img, 1600);
-          rec.img = small.img; rec.url = small.url;
-          rec.w = small.w; rec.h = small.h; rec.ar = small.w / small.h;
-        } catch (e) { /* keep the original */ }
-        state.photos.push(rec);
-        resolve(rec);
-      };
-      img.onerror = function () { resolve(null); };
+      img.onload = function () { res(img); };
+      img.onerror = function () { rej(new Error('图片打不开')); };
       img.src = url;
     });
+  }
+
+  /* a stored row → the record the engine and renderer already expect */
+  function recordFromStored(s) {
+    var url = M.OBJ.acquire(s.id, s.blob);
+    return new Promise(function (res) {
+      var img = new Image();
+      img.onload = function () {
+        var a = s.analysis || {};
+        res({
+          id: s.id, name: s.name, url: url, img: img,
+          w: s.width, h: s.height, ar: a.ar || (s.width / s.height),
+          hero: a.hero == null ? 0.5 : a.hero,
+          focal: a.focal || { x: 0.5, y: 0.5 },
+          colors: a.colors || ['#8a8577', '#6d6a60', '#4a4841'],
+          bright: a.bright == null ? 0.5 : a.bright,
+          sat: a.sat == null ? 0.3 : a.sat,
+          detail: a.detail == null ? 0.2 : a.detail,
+          starred: !!s.starred
+        });
+      };
+      img.onerror = function () { res(null); };
+      img.src = url;
+    });
+  }
+
+  /* File → analyzed, thumbnailed, written to IndexedDB */
+  async function importFile(file) {
+    var tmp = URL.createObjectURL(file);
+    var img;
+    try { img = await loadImage(tmp); }
+    catch (e) { URL.revokeObjectURL(tmp); return null; }
+    var id = M.STORE.uid('p');
+    var rec = await M.analyze(img, { id: id, name: file.name.replace(/\.[^.]+$/, ''), url: tmp });
+    var work = await M.toBlob(img, 1600, 0.92);
+    var thumb = await M.toBlob(img, 420, 0.78);
+    var stored = {
+      id: id,
+      name: rec.name || file.name,
+      mimeType: file.type || 'image/jpeg',
+      fileSize: file.size || 0,
+      width: work.w, height: work.h,
+      createdAt: file.lastModified || Date.now(),
+      importedAt: Date.now(),
+      starred: false,
+      blob: work.blob,
+      thumbnail: thumb.blob,
+      original: (file.size && file.size <= 8 * 1024 * 1024) ? file : null,
+      storedScale: work.scale,
+      analysis: {
+        ar: rec.ar, hero: rec.hero, focal: rec.focal, colors: rec.colors,
+        bright: rec.bright, sat: rec.sat, detail: rec.detail
+      }
+    };
+    await M.STORE.putPhoto(stored);
+    URL.revokeObjectURL(tmp);
+    return recordFromStored(stored);
+  }
+
+  function noteImported(rec) {
+    if (!rec) return;
+    state.photos.push(rec);
+    var known = state.library.some(function (p) { return p.id === rec.id; });
+    if (!known) state.library.push(rec);
   }
 
   async function addFiles(files) {
     var list = Array.prototype.slice.call(files).filter(function (f) { return /^image\//.test(f.type); });
     if (!list.length) return;
+    await ensureProject();
     setStat('正在读 ' + list.length + ' 张…');
-    var failed = 0;
+    var failed = 0, done = 0;
     for (var i = 0; i < list.length; i++) {
-      var f = list[i];
-      var rec = await addUrl(URL.createObjectURL(f), f.name.replace(/\.[^.]+$/, ''));
-      if (!rec) failed++;
+      try {
+        var rec = await importFile(list[i]);
+        if (rec) { noteImported(rec); done++; } else failed++;
+      } catch (e) { failed++; }
       if (i % 3 === 2) setStat('正在读 ' + (i + 1) + ' / ' + list.length + '…');
     }
-    buildTray(); rebuild(); savePhotos();
-    if (failed) toast(failed + ' 张打不开（HEIC 等格式浏览器解不了，先转成 JPG）');
+    buildTray(); rebuild();
+    state.coverPhoto = null;
+    if (failed) toast(failed + ' 张没存进去（HEIC 等浏览器解不了的格式，先转 JPG）');
+    else if (done) toast('已存进本机 · ' + done + ' 张');
   }
 
+  /* sample photos / url lists still go through the same door */
   async function loadList(list, label) {
+    await ensureProject();
     var ok = 0;
     for (var j = 0; j < list.length; j++) {
       setStat('正在载入 ' + (j + 1) + ' / ' + list.length + '…');
-      var rec = await addUrl(list[j].url, list[j].name || ('图 ' + (j + 1)));
-      if (rec) ok++;
+      try {
+        var r = await fetch(list[j].url);
+        var blob = await r.blob();
+        var name = (list[j].name || ('图 ' + (j + 1))) + '.jpg';
+        var rec = await importFile(new File([blob], name, { type: blob.type || 'image/jpeg' }));
+        if (rec) { noteImported(rec); ok++; }
+      } catch (e) { /* skip */ }
     }
     if (!ok) { toast((label || '照片') + '载不进来'); setStat('还没有照片'); return; }
     buildTray(); rebuild();
@@ -322,6 +392,210 @@
     return loadList(names, '示例');
   }
 
+  /* ---------------- the project (one book) ---------------- */
+  var project = null;
+  var saveTimer = null, saveSeq = 0, lastSavedAt = 0, saveFailing = false;
+
+  function setSaveState(st, text) {
+    if (!el.saveState) return;
+    el.saveState.dataset.state = st;
+    el.saveState.textContent = text || '';
+  }
+
+  async function ensureProject() {
+    if (project) return project;
+    var last = await M.STORE.getPref('lastProjectId');
+    project = last ? await M.STORE.getProject(last) : null;
+    if (!project) {
+      project = await M.STORE.createProject({
+        title: state.title || '未命名的一卷',
+        designDirection: state.direction,
+        settings: { mode: state.mode, scheme: state.scheme, count: state.count, seed: state.seed, locked: {}, photoIds: [] },
+        texts: state.texts
+      });
+      await M.STORE.setPref('lastProjectId', project.id);
+    }
+    return project;
+  }
+
+  function slimPage(pg) {
+    return {
+      w: pg.w, h: pg.h, bg: pg.bg, ink: pg.ink, muted: pg.muted,
+      frames: (pg.frames || []).map(function (f) {
+        return {
+          p: f.photo && f.photo.id, x: f.x, y: f.y, w: f.w, h: f.h,
+          pad: f.pad, role: f.role, z: f.z, crop: f.crop
+        };
+      }),
+      rects: (pg.rects || []).map(function (r) {
+        return { x: r.x, y: r.y, w: r.w, h: r.h, color: r.color };
+      }),
+      texts: (pg.texts || []).map(function (t) {
+        return {
+          x: t.x, y: t.y, w: t.w, lines: t.lines || [], size: t.size, family: t.family,
+          weight: t.weight, color: t.color, align: t.align, tracking: t.tracking,
+          lineHeight: t.lineHeight, opacity: t.opacity
+        };
+      })
+    };
+  }
+
+  function snapshot() {
+    var z = state.zine;
+    return {
+      schemaVersion: 1,
+      direction: state.direction,
+      mode: state.mode, scheme: state.scheme, count: state.count, seed: state.seed,
+      locked: JSON.parse(JSON.stringify(state.locked || {})),
+      texts: JSON.parse(JSON.stringify(state.texts || {})),
+      photoIds: state.photos.map(function (p) { return p.id; }),
+      coverId: z && z.cover ? z.cover.id : null,
+      coverPhotoId: z && z.cover ? z.cover.id : null,
+      total: z ? z.total : state.photos.length,
+      pair: z ? !!z.pair : false,
+      units: z ? z.units.map(function (u) {
+        return { key: u.key, start: u.startIndex, n: u.pages.length };
+      }) : [],
+      pages: z ? z.pages.map(slimPage) : []
+    };
+  }
+
+  /* ids this version used: trust the list, but fall back to what the pages
+     actually reference — a version restored from an older build may lack it */
+  function versionPhotoIds(snap) {
+    var ids = (snap.photoIds || []).slice();
+    if (!ids.length) {
+      var seen = {};
+      (snap.pages || []).forEach(function (pg) {
+        (pg.frames || []).forEach(function (f) {
+          if (f.p && !seen[f.p]) { seen[f.p] = 1; ids.push(f.p); }
+        });
+      });
+    }
+    return ids;
+  }
+
+  function hydratePages(slim) {
+    var byId = {};
+    state.photos.forEach(function (p) { byId[p.id] = p; });
+    return (slim || []).map(function (sp) {
+      return {
+        w: sp.w, h: sp.h, bg: sp.bg, ink: sp.ink, muted: sp.muted,
+        frames: (sp.frames || []).map(function (f) {
+          return {
+            photo: byId[f.p] || null, x: f.x, y: f.y, w: f.w, h: f.h,
+            pad: f.pad, role: f.role, z: f.z, crop: f.crop
+          };
+        }).filter(function (f) { return f.photo; }),
+        rects: (sp.rects || []).slice(),
+        texts: (sp.texts || []).map(function (t) {
+          var o = {};
+          Object.keys(t).forEach(function (k) { o[k] = t[k]; });
+          o.lines = (t.lines || []).slice();
+          return o;
+        })
+      };
+    });
+  }
+
+  /* ---------------- autosave ---------------- */
+  function scheduleSave() {
+    if (!project) return;
+    setSaveState('pending', '保存中…');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () { flushSave(); }, 650);
+  }
+
+  function flushSave() {
+    if (!project) return Promise.resolve(false);
+    clearTimeout(saveTimer);
+    if (!state.photos.length && !state.zine) { setSaveState('idle', ''); return Promise.resolve(false); }
+    var snap = snapshot();
+    var mySeq = ++saveSeq;
+    setSaveState('saving', '保存中…');
+    return M.STORE.saveDraft(project.id, snap)
+      .then(function (v) {
+        return M.STORE.updateProject(project.id, {
+          title: state.title, designDirection: state.direction,
+          coverPhotoId: snap.coverPhotoId, texts: state.texts,
+          settings: {
+            mode: state.mode, scheme: state.scheme, count: state.count,
+            seed: state.seed, locked: state.locked, photoIds: snap.photoIds
+          },
+          currentVersionId: v.id
+        });
+      })
+      .then(function () {
+        if (mySeq !== saveSeq) return;
+        saveFailing = false;
+        lastSavedAt = Date.now();
+        var d = new Date(lastSavedAt);
+        setSaveState('saved', '已保存 ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2));
+      })
+      .catch(function (err) {
+        if (mySeq !== saveSeq) return;
+        saveFailing = true;
+        setSaveState('error', '保存失败 ⟳');
+        if (el.saveState) el.saveState.title = '点一下重试：' + (err && err.message ? err.message : err);
+        toast('没保存上：' + (err && err.message ? err.message : err));
+      });
+  }
+
+  /* ---------------- save as a new version ---------------- */
+  async function saveNewVersion(desc) {
+    if (!project) await ensureProject();
+    await flushSave();
+    var v = await M.STORE.saveVersion(project.id, snapshot(), desc || '', {});
+    await M.STORE.updateProject(project.id, { currentVersionId: v.id });
+    toast('已保存 v' + v.versionNumber);
+    return v;
+  }
+
+  /* ---------------- restore ---------------- */
+  async function applySnapshot(snap, opt) {
+    opt = opt || {};
+    if (!snap || !snap.pages) throw new Error('版本是空的');
+    state.direction = snap.direction || 'zine';
+    state.mode = snap.mode || 'C';
+    state.scheme = snap.scheme || 0;
+    state.count = snap.count || 9;
+    state.seed = snap.seed || 11;
+    state.locked = JSON.parse(JSON.stringify(snap.locked || {}));
+    state.texts = JSON.parse(JSON.stringify(snap.texts || {}));
+
+    // photos: keep the library records this version used, in order
+    var byId = {};
+    state.library.forEach(function (p) { byId[p.id] = p; });
+    var ids = versionPhotoIds(snap);
+    var missing = ids.filter(function (id) { return !byId[id]; });
+    if (missing.length) {
+      for (var mi = 0; mi < missing.length; mi++) {
+        var row = await M.STORE.getPhoto(missing[mi]);
+        var rec = row ? await recordFromStored(row) : null;
+        if (rec) { byId[rec.id] = rec; state.library.push(rec); }
+      }
+    }
+    state.photos = ids.map(function (id) { return byId[id]; }).filter(Boolean);
+    if (!state.photos.length) {
+      BOOT.push('restore had 0 usable photos of ' + ids.length);
+    }
+
+    var pages = hydratePages(snap.pages);
+    var units = (snap.units || []).map(function (u) {
+      return { key: u.key, startIndex: u.start, pages: pages.slice(u.start, u.start + u.n) };
+    });
+    state.zine = {
+      pages: pages, units: units, pair: !!snap.pair,
+      total: snap.total || state.photos.length,
+      cover: byId[snap.coverId] || null,
+      mode: state.mode, scheme: state.scheme
+    };
+    state.title = (state.texts[state.direction] && state.texts[state.direction].title) || state.title;
+    if (el.title) el.title.value = state.title;
+    buildRail(); buildTray(); paintZine();
+    if (!opt.quiet) toast('已恢复');
+  }
+
   /* ---------------- render ---------------- */
   function setStat(t) { el.stat.textContent = t; }
 
@@ -329,11 +603,13 @@
     if (!state.photos.length) {
       el.zinePanel.hidden = true; el.empty.hidden = false;
       el.btnPNG.disabled = true; el.btnPDF.disabled = true; el.btnShuffle.disabled = true;
+      if (el.btnVersion) el.btnVersion.disabled = true;
       return;
     }
     el.empty.hidden = true;
     el.zinePanel.hidden = false;
     el.btnPNG.disabled = false; el.btnPDF.disabled = false; el.btnShuffle.disabled = false;
+    if (el.btnVersion) el.btnVersion.disabled = false;
 
     var preset = Object.keys(state.locked).map(function (k) {
       var L = state.locked[k];
@@ -426,6 +702,7 @@
       el.zineList.appendChild(row);
     });
 
+    scheduleSave();
     el.zineNote.textContent = z.total + ' 张 → ' + z.pages.length + ' 张图 · ' +
       (pair ? '两张一组，手机上滑过去，跨页的图连成一整张。' : '每页独立构图。');
     setStat(z.total + ' 张 · ' + z.pages.length + ' 张图');
@@ -691,19 +968,19 @@
     toast(from ? '两张互换了位置' : '换好了');
   }
 
-  function deletePhoto(photo) {
+  async function deletePhoto(photo) {
     var idx = state.photos.indexOf(photo);
     if (idx < 0) return;
     state.photos.splice(idx, 1);
     closePicker();
     buildTray();
     rebuild();
-    toastUndo('删掉 1 张 · 还剩 ' + state.photos.length + ' 张，版已重排', function () {
+    toastUndo('从这本里移出 1 张 · 还剩 ' + state.photos.length + ' 张（照片还在库里）', function () {
       state.photos.splice(idx, 0, photo);
-      savePhotos();
       buildTray();
       rebuild();
     });
+    scheduleSave();
   }
 
   /* ---------------- lightbox ---------------- */
@@ -882,38 +1159,442 @@
     if (hint) hint.textContent = '本地处理，不上传。把照片拖进来，或者点「选择照片」——四十张也可以。';
   }
 
-  buildRail();
-  buildTray();
-  rebuild();
-
-  loadSavedDir();
-  loadSavedText();
-  state.title = textFor(state.direction).title;
-  state.year = textFor(state.direction).year;
-  el.title.value = state.title;
-  buildRail();
-
-  var saved = loadSavedPhotos();
-  if (saved.length) {
-    setStat('正在恢复上次的 ' + saved.length + ' 张…');
-    (async function () {
-      var stars = loadSavedStars();
-      for (var i = 0; i < saved.length; i++) {
-        var rec = await addUrl(saved[i].url, saved[i].name);
-        if (rec && stars.indexOf(rec.name || '') >= 0) rec.starred = true;
-      }
-      buildTray(); rebuild();
-    })();
-  } else if (manifest) {
-    fetch(manifest).then(function (r) { return r.json(); })
-      .then(function (list) { return loadList(list, '照片'); })
-      .catch(function () { hideDemo(); });
-  } else {
-    fetch('assets/demo/p1.jpg', { method: 'HEAD' }).then(function (r) {
-      if (r.ok && !state.photos.length) loadDemo();
-      else if (!r.ok) hideDemo();
-    }).catch(function () { hideDemo(); });
+  /* ---------------- version history ---------------- */
+  function fmtTime(ts) {
+    var d = new Date(ts);
+    return d.getMonth() + 1 + '月' + d.getDate() + '日 ' +
+      ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
 
-  window.__mem = { state: state, rebuild: rebuild, M: M, paint: paintZine };
+  async function openVersions() {
+    if (!project) await ensureProject();
+    el.versions.hidden = false;
+    el.verName.value = '';
+    await renderVersions();
+  }
+  function closeVersions() { el.versions.hidden = true; }
+
+  async function renderVersions() {
+    var list = await M.STORE.listVersions(project.id);
+    var manual = list.filter(function (v) { return !v.isAutoSaved; });
+    var draft = list.filter(function (v) { return v.isAutoSaved; })[0];
+    el.verList.innerHTML = '';
+
+    if (draft) {
+      var row = document.createElement('div');
+      row.className = 'ver-row is-current';
+      row.innerHTML = '<span class="ver-no">草稿</span><div class="ver-meta">' +
+        '<p class="ver-desc">当前正在编辑的版本（自动保存）</p>' +
+        '<span class="ver-sub">' + fmtTime(draft.createdAt) + ' · ' +
+        (draft.snapshot && draft.snapshot.pages ? draft.snapshot.pages.length : 0) + ' 页</span></div>';
+      el.verList.appendChild(row);
+    }
+
+    if (!manual.length) {
+      var empty = document.createElement('p');
+      empty.className = 'ver-sub';
+      empty.style.padding = '18px 0';
+      empty.textContent = '还没有保存过版本。上面留个名字，点「保存为新版本」，现在的样子就会被留住。';
+      el.verList.appendChild(empty);
+      return;
+    }
+
+    manual.forEach(function (v) {
+      var row = document.createElement('div');
+      row.className = 'ver-row' + (v.id === project.currentVersionId ? ' is-current' : '');
+      var snap = v.snapshot || {};
+      var dirName = snap.direction === 'jp' ? '日式小书' : '杂志 Zine';
+      var box = document.createElement('div');
+      box.className = 'ver-meta';
+      box.innerHTML = '<p class="ver-desc">' + (v.description ? escapeHtml(v.description) : '未命名') + '</p>' +
+        '<span class="ver-sub">' + fmtTime(v.createdAt) + ' · ' + (snap.pages ? snap.pages.length : 0) +
+        ' 页 · ' + dirName + '</span>';
+      var no = document.createElement('span');
+      no.className = 'ver-no';
+      no.textContent = 'v' + v.versionNumber;
+      var restore = document.createElement('button');
+      restore.className = 'btn btn-ghost';
+      restore.textContent = '恢复';
+      restore.onclick = function () { restoreVersion(v); };
+      var del = document.createElement('button');
+      del.className = 'btn btn-danger';
+      del.textContent = '删';
+      del.title = '删掉这一版';
+      del.onclick = async function () {
+        await M.STORE.deleteVersion(v.id);
+        renderVersions();
+      };
+      row.appendChild(no); row.appendChild(box); row.appendChild(restore); row.appendChild(del);
+      el.verList.appendChild(row);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  async function restoreVersion(v) {
+    try {
+      BOOT.push('restore v' + v.versionNumber + ' snapshot=' + (v.snapshot ? 'yes' : 'no') +
+        ' ids=' + (v.snapshot && v.snapshot.photoIds ? v.snapshot.photoIds.length : 'none') +
+        ' pages=' + (v.snapshot && v.snapshot.pages ? v.snapshot.pages.length : 'none'));
+      await applySnapshot(v.snapshot, { quiet: true });
+      await flushSave();                        // the restored state becomes the draft
+      await M.STORE.updateProject(project.id, { currentVersionId: v.id });
+      toast('已恢复到 v' + v.versionNumber + '，可以继续改');
+      closeVersions();
+    } catch (e) {
+      toast('恢复失败：' + (e && e.message ? e.message : e));
+    }
+  }
+
+  async function newVersionFromUI() {
+    var name = (el.verName.value || '').trim();
+    try {
+      await saveNewVersion(name || ('v' + (Date.now() % 10000)));
+      el.verName.value = '';
+      await renderVersions();
+      toast('已保存' + (name ? '：' + name : ''));
+    } catch (e) {
+      toast('保存版本失败：' + (e && e.message ? e.message : e));
+    }
+  }
+
+  el.verClose.onclick = closeVersions;
+  el.verSave.onclick = newVersionFromUI;
+  el.versions.addEventListener('click', function (e) { if (e.target === el.versions) closeVersions(); });
+  el.btnVersion.onclick = function () { openVersions(); };
+
+  /* ---------------- project library ---------------- */
+  async function showQuota() {
+    var e = await M.STORE.estimate();
+    if (!e || !el.libQuota) return;
+    var saved = await M.STORE.persisted();
+    el.libQuota.textContent = '已用 ' + (e.usage / 1048576).toFixed(1) + ' MB' +
+      (e.quota ? ' / 可用 ' + Math.round(e.quota / 1073741824 * 10) / 10 + ' GB' : '') +
+      (saved ? ' · 已申请长期保存' : '');
+  }
+
+  async function openLibrary() {
+    el.library.hidden = false;
+    await renderLibrary();
+    showQuota();
+  }
+  function closeLibrary() { el.library.hidden = true; }
+
+  async function renderLibrary() {
+    var list = await M.STORE.listProjects();
+    var covers = {};
+    el.libList.innerHTML = '';
+    for (var i = 0; i < list.length; i++) {
+      var pr = list[i];
+      var versions = await M.STORE.listVersions(pr.id);
+      var draft = versions.filter(function (v) { return v.isAutoSaved; })[0];
+      var snap = (draft && draft.snapshot) || (versions[0] && versions[0].snapshot) || {};
+      var pages = (snap.pages || []).length;
+
+      var row = document.createElement('div');
+      row.className = 'lib-row' + (project && pr.id === project.id ? ' is-open' : '');
+
+      var cover = document.createElement('div');
+      cover.className = 'lib-cover';
+      var coverId = pr.coverPhotoId || snap.coverId;
+      if (coverId && !covers[coverId]) {
+        var ph = state.library.filter(function (p) { return p.id === coverId; })[0];
+        covers[coverId] = ph ? ph.url : null;
+      }
+      if (coverId && covers[coverId]) {
+        var im = document.createElement('img');
+        im.src = covers[coverId]; im.alt = '';
+        cover.appendChild(im);
+      }
+      row.appendChild(cover);
+
+      var meta = document.createElement('div');
+      meta.className = 'lib-meta';
+      meta.innerHTML = '<p class="lib-title">' + escapeHtml(pr.title || '未命名') + '</p>' +
+        '<span class="lib-sub">' + pages + ' 页 · ' +
+        (pr.designDirection === 'jp' ? '日式小书' : '杂志 Zine') + ' · ' +
+        fmtTime(pr.updatedAt || pr.createdAt) + ' · ' + versions.length + ' 个版本</span>';
+      row.appendChild(meta);
+
+      var open = document.createElement('button');
+      open.className = 'btn btn-ghost';
+      open.textContent = '打开';
+      open.onclick = (function (id) { return function () { switchProject(id); }; })(pr.id);
+      var ren = document.createElement('button');
+      ren.className = 'btn btn-ghost';
+      ren.textContent = '改名';
+      ren.onclick = (function (p2) { return function () { renameProject(p2); }; })(pr);
+      var dup = document.createElement('button');
+      dup.className = 'btn btn-ghost';
+      dup.textContent = '复制';
+      dup.onclick = (function (p2) { return function () { copyProject(p2); }; })(pr);
+      var del = document.createElement('button');
+      del.className = 'btn btn-danger';
+      del.textContent = '删';
+      del.onclick = (function (p2) { return function () { removeProject(p2); }; })(pr);
+
+      row.appendChild(open); row.appendChild(ren); row.appendChild(dup); row.appendChild(del);
+      el.libList.appendChild(row);
+    }
+    if (!list.length) {
+      var empty = document.createElement('p');
+      empty.className = 'lib-sub';
+      empty.style.padding = '18px 0';
+      empty.textContent = '还没有作品。点「＋ 新建作品」，然后导入照片。';
+      el.libList.appendChild(empty);
+    }
+  }
+
+  async function switchProject(id) {
+    await flushSave();
+    var pr = await M.STORE.getProject(id);
+    if (!pr) { toast('这本作品不在了'); return; }
+    project = pr;
+    await M.STORE.setPref('lastProjectId', id);
+    state.texts = pr.texts && Object.keys(pr.texts).length ? JSON.parse(JSON.stringify(pr.texts)) : {};
+    state.direction = pr.designDirection || 'zine';
+    var versions = await M.STORE.listVersions(id);
+    var draft = versions.filter(function (v) { return v.isAutoSaved; })[0];
+    if (draft && draft.snapshot && (draft.snapshot.pages || []).length) {
+      await applySnapshot(draft.snapshot, { quiet: true });
+    } else {
+      state.photos = state.library.filter(function (p) {
+        return ((pr.settings || {}).photoIds || []).indexOf(p.id) >= 0;
+      });
+      buildRail(); buildTray(); rebuild();
+    }
+    setSaveState('saved', '已保存');
+    closeLibrary();
+    toast('打开：' + (pr.title || '未命名'));
+  }
+
+  async function newProject() {
+    await flushSave();
+    var pr = await M.STORE.createProject({
+      title: '未命名的一卷',
+      designDirection: state.direction,
+      settings: { mode: state.mode, scheme: state.scheme, count: state.count, seed: state.seed, locked: {}, photoIds: [] },
+      texts: {}
+    });
+    project = pr;
+    await M.STORE.setPref('lastProjectId', pr.id);
+    state.photos = [];
+    state.zine = null;
+    buildTray();
+    el.zinePanel.hidden = true; el.empty.hidden = false;
+    closeLibrary();
+    toast('新建了一本，导入照片开始排');
+  }
+
+  async function renameProject(pr) {
+    var name = prompt('作品名称', pr.title || '未命名的一卷');
+    if (name == null) return;
+    await M.STORE.updateProject(pr.id, { title: name.trim() || '未命名的一卷' });
+    if (project && project.id === pr.id) project = await M.STORE.getProject(pr.id);
+    renderLibrary();
+  }
+
+  async function copyProject(pr) {
+    var copy = await M.STORE.duplicateProject(pr.id);
+    renderLibrary();
+    toast('复制成「' + copy.title + '」');
+  }
+
+  async function removeProject(pr) {
+    if (!confirm('删掉作品「' + (pr.title || '未命名') + '」？照片不会删，还在库里。')) return;
+    await M.STORE.deleteProject(pr.id);
+    if (project && project.id === pr.id) {
+      var rest = await M.STORE.listProjects();
+      if (rest.length) await switchProject(rest[0].id);
+      else await newProject();
+    } else {
+      renderLibrary();
+    }
+    toast('已删除作品（照片还在）');
+  }
+
+  async function exportBackup(projectId) {
+    try {
+      var r = projectId ? await M.BACKUP.exportProject(projectId) : await M.BACKUP.exportAll();
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(r.blob);
+      a.download = r.name;
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 8000);
+      toast('备份已生成：' + r.name + ' · ' + r.projects + ' 本 / ' + r.photos + ' 张照片');
+    } catch (e) {
+      toast('备份失败：' + (e && e.message ? e.message : e));
+    }
+  }
+
+  el.libBackup.onclick = function () { exportBackup(null); };
+  el.libImport.onclick = function () { el.backupInput.click(); };
+  el.backupInput.onchange = async function (e) {
+    var f = e.target.files && e.target.files[0];
+    el.backupInput.value = '';
+    if (!f) return;
+    toast('正在检查备份…');
+    try {
+      var plan = await M.BACKUP.inspect(f);
+      var ok = confirm('备份里有 ' + plan.projects.length + ' 本作品、' + plan.photoIds.length + ' 张照片。' +
+        (plan.missingPhotos.length ? ' 缺 ' + plan.missingPhotos.length + ' 张，会取消导入。' : '') +
+        ' 导入会新增作品，不会覆盖现有的。继续？');
+      if (!ok) return;
+      var w = await M.BACKUP.import(plan);
+      await loadLibrary();
+      await renderLibrary();
+      toast('导入完成：' + w.projects + ' 本 / ' + w.photos + ' 张照片 / ' + w.versions + ' 个版本');
+    } catch (err) {
+      toast('导入取消：' + (err && err.message ? err.message : err));
+    }
+  };
+
+  el.btnLibrary.onclick = openLibrary;
+  el.libClose.onclick = closeLibrary;
+  el.libNew.onclick = newProject;
+  el.library.addEventListener('click', function (e) { if (e.target === el.library) closeLibrary(); });
+
+  /* ---------------- boot ---------------- */
+  async function loadLibrary() {
+    var rows = await M.STORE.getAllPhotos();
+    var recs = [];
+    for (var i = 0; i < rows.length; i++) {
+      var r = await recordFromStored(rows[i]);
+      if (r) recs.push(r);
+    }
+    state.library = recs;
+    return recs;
+  }
+
+  /* the old localStorage photos: blob: urls cannot be restored, and we say so */
+  async function migrateOnce() {
+    var already = await M.STORE.getPref('migratedV1');
+    if (already) return null;
+    var report = { stars: 0, dead: 0 };
+    var oldList = loadSavedPhotos();
+    oldList.forEach(function (o) { if (/^blob:/.test(o.url || '')) report.dead++; });
+    var stars = loadSavedStars();
+    if (stars.length && state.library.length) {
+      for (var i = 0; i < state.library.length; i++) {
+        var p = state.library[i];
+        if (stars.indexOf(p.name) >= 0 && !p.starred) {
+          p.starred = true;
+          report.stars++;
+          var row = await M.STORE.getPhoto(p.id);
+          if (row) { row.starred = true; await M.STORE.putPhoto(row); }
+        }
+      }
+    }
+    await M.STORE.setPref('migratedV1', Date.now());
+    return report;
+  }
+
+  var BOOT = [];
+  window.__bootLog = BOOT;
+  async function restoreSession() {
+    BOOT.push('start');
+    await ensureProject();
+    BOOT.push('project');
+    loadSavedDir();
+    loadSavedText();
+    state.direction = project.designDirection || state.direction;
+    if (project.texts && Object.keys(project.texts).length) {
+      state.texts = JSON.parse(JSON.stringify(project.texts));
+    }
+    state.title = textFor(state.direction).title;
+    state.year = textFor(state.direction).year;
+    if (el.title) el.title.value = state.title;
+
+    await loadLibrary();
+    BOOT.push('library=' + state.library.length);
+    var report = await migrateOnce();
+
+    var versions = await M.STORE.listVersions(project.id);
+    var draft = versions.filter(function (v) { return v.isAutoSaved; })[0];
+    var hasDraft = draft && draft.snapshot && draft.snapshot.pages && draft.snapshot.pages.length;
+
+    BOOT.push('versions=' + versions.length + ' draft=' + (hasDraft ? 1 : 0));
+    if (hasDraft) {
+      await applySnapshot(draft.snapshot, { quiet: true });
+      BOOT.push('draft applied frames=' + state.zine.pages.reduce(function (a, p) { return a + p.frames.length; }, 0));
+      setSaveState('saved', '已恢复上次编辑');
+    } else if (state.library.length) {
+      BOOT.push('from library');
+      state.photos = state.library.slice();
+      state.coverPhoto = null;
+      buildRail(); buildTray(); rebuild();
+    }
+
+    if (report) {
+      var bits = [];
+      if (report.stars) bits.push('★ ' + report.stars + ' 张');
+      if (report.dead) bits.push(report.dead + ' 张上次上传的照片已失效，需要重新拖进来');
+      if (bits.length) setTimeout(function () { toast('旧数据迁移：' + bits.join(' · ')); }, 1200);
+    }
+
+    BOOT.push('photos=' + state.photos.length +
+      ' frames=' + (state.zine ? state.zine.pages.reduce(function (a, p) { return a + p.frames.length; }, 0) : 0) +
+      ' manifest=' + (manifest || '-'));
+    if (!state.photos.length) {
+      if (manifest) {
+        BOOT.push('importing manifest');
+        fetch(manifest).then(function (r) { return r.json(); })
+          .then(function (list) { return loadList(list, '照片'); })
+          .catch(function () { hideDemo(); });
+      } else {
+        fetch('assets/demo/p1.jpg', { method: 'HEAD' }).then(function (r) {
+          if (r.ok && !state.photos.length) loadDemo();
+          else if (!r.ok) hideDemo();
+        }).catch(function () { hideDemo(); });
+      }
+    }
+  }
+
+  buildRail();
+  buildTray();
+  setSaveState('idle', '');
+
+  (async function () {
+    try {
+      await M.STORE.init();
+    } catch (e) {
+      setSaveState('error', '数据库打不开');
+      toast('这台浏览器不允许本地数据库：' + (e && e.message ? e.message : e) + '（照片和作品都不会保存）');
+      if (el.empty) el.empty.hidden = false;
+      return;
+    }
+    try {
+      await restoreSession();
+    } catch (e) {
+      setSaveState('error', '读取失败');
+      toast('读取上次的作品失败：' + (e && e.message ? e.message : e));
+    }
+  })();
+
+  /* never lose the last edit: flush when the page goes away */
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden' && saveTimer) flushSave();
+  });
+  window.addEventListener('pagehide', function () { if (saveTimer) flushSave(); });
+
+  if (el.saveState) {
+    el.saveState.onclick = function () {
+      if (saveFailing) { flushSave(); return; }
+      openVersions();
+    };
+  }
+
+  window.__mem = {
+    state: state, rebuild: rebuild, M: M, paint: paintZine,
+    addFiles: addFiles, importFile: importFile, flushSave: flushSave, scheduleSave: scheduleSave,
+    snapshot: snapshot, applySnapshot: applySnapshot, ensureProject: ensureProject,
+    versionPhotoIds: versionPhotoIds,
+    openVersions: openVersions, saveNewVersion: saveNewVersion, restoreVersion: restoreVersion,
+    project: function () { return project; }, loadLibrary: loadLibrary,
+    report: function () { return { photos: state.photos.length, library: state.library.length, save: el.saveState ? el.saveState.dataset.state : '', obj: M.OBJ.stats() }; }
+  };
 })();

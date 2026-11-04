@@ -94,6 +94,12 @@ window.MEM = window.MEM || {};
     });
   }
 
+  /* the same writer is used by the backup archive */
+  M.makeZip = makeZip;
+  M.zipBytes = function (blob) {
+    return blob.arrayBuffer().then(function (ab) { return new Uint8Array(ab); });
+  };
+
   M.exportZIP = async function (pages, title, opt) {
     /* returns the blob plus what it contains, so the UI can say the truth */
     opt = opt || {};

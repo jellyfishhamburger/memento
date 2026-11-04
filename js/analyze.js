@@ -156,6 +156,24 @@ window.MEM = window.MEM || {};
 
   /* Downscale once, keep the small copy: a 26 MP original decodes to ~100 MB of
      bitmap, and 39 of those take the tab down. 1500 px is plenty for a 1080 tile. */
+  /* a working copy as a Blob: this is what goes into IndexedDB */
+  M.toBlob = function (img, max, quality) {
+    var nw = img.naturalWidth || img.width, nh = img.naturalHeight || img.height;
+    var s = Math.min(1, (max || 1600) / Math.max(nw, nh));
+    var cw = Math.max(2, Math.round(nw * s)), ch = Math.max(2, Math.round(nh * s));
+    var c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    var ctx = c.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, cw, ch);
+    return new Promise(function (res, rej) {
+      c.toBlob(function (b) {
+        if (!b) { rej(new Error('图片编码失败')); return; }
+        res({ blob: b, w: cw, h: ch, scale: s });
+      }, 'image/jpeg', quality || 0.92);
+    });
+  };
+
   M.shrink = function (img, max) {
     var nw = img.naturalWidth || img.width, nh = img.naturalHeight || img.height;
     var s = Math.min(1, (max || 1500) / Math.max(nw, nh));

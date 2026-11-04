@@ -54,3 +54,35 @@
 - 方向/文字的默认值改完要**清 localStorage** 才能看到（`_inspect/jp_shot.mjs` 支持 `CLEAR=1`）。
 - 本地预览：`cd ~/Desktop/memento && python -m http.server 8770` → `http://127.0.0.1:8770/?mode=zine`。
 - CDP：Chrome 常在 9333，`node _inspect/cdp.mjs <url> <expr.js>`；`_inspect/jp_shot.mjs` 支持 `CLEAR=/OUT=`。
+
+---
+
+# 本地持久化与版本管理（2026-11-04 第二轮）
+
+## 这一轮做了什么
+1. **IndexedDB（`js/storage.js`）**：库 `memento-db` v1，四表 `photos / projects / versions / prefs`。原生封装，无 CDN 依赖。
+2. **Blob URL 生命周期（`js/objects.js`）**：`acquire/release/releaseAll` + 引用计数；一个 photoId 一个 URL。验收时 38 张 = 38 个 URL，反复渲染不增长。
+3. **真持久化**：导入走 `importFile()` → 分析 + 1600px 工作副本 + 420 缩略图 → 写库 → 用库里的 Blob 建 URL。刷新后从库恢复，页面模型逐字节一致（哈希比对）。
+4. **多作品**：顶栏「作品库」：新建 / 打开 / 改名 / 复制 / 删除 / 封面 / 页数 / 更新时间。删作品不删照片。
+5. **自动保存**：`scheduleSave()` 650ms 防抖 → `saveDraft()` 覆盖**该项目唯一的** `isAutoSaved` 草稿；顶栏状态 `保存中…/已保存 hh:mm/保存失败 ⟳`，失败可点重试。`visibilitychange` + `pagehide` 会 flush。
+6. **版本**：`保存版本` 存独立快照（瘦身页面模型，只存 photoId）；版本面板可恢复、可删；恢复 = 把快照写成当前草稿，不动历史行。手动版本号从 1 开始，草稿不占号。
+7. **备份（`js/backup.js`）**：`.memento` = zip(manifest.json + projects.json + photos/ + thumbs/)，自带 zip 读写（store + deflate，`DecompressionStream`）。导入先校验再写，缺图整批取消；id 冲突自动改 id。
+8. **迁移**：`migratedV1` 一次性；`blob:` 旧照片判失效并明确提示，不假恢复。
+9. README 重写（数据结构 / 版本快照格式 / 迁移 / 备份 / 限制）。
+
+## 本轮踩到的坑（都修了）
+- **`state.library` 与 `state.photos` 不同步**：首次导入时 `loadLibrary()` 先跑（库是空的），之后导入只 push 到 `state.photos` → 恢复版本时 `state.library` 查不到照片 → 页面全空、还把这版空快照存成草稿。修：`noteImported()` 同时写两处 + `applySnapshot` 缺 id 时回库查 `getPhoto`。
+- **草稿吃掉了 v1 的编号**：`saveVersion` 原来把 `isAutoSaved` 也算进版本号，第一份手动版本变成 v2。修：只按手动版本算号。
+- **单元测试用的 cdp 默认 profile 里有旧数据**，导致「manifest 不生效」的假象（其实是有草稿优先恢复，行为正确）。验收脚本改成每次随机 `--user-data-dir`。
+
+## 现在怎么验
+```
+node _inspect/accept.mjs     # 全流程：导入→刷新→版本→恢复→库→备份往返→写失败
+```
+最近跑通：38 张 / 9 页 / 哈希一致 / 恢复 v1 后刷新仍 v1 / 复制删除不影响照片 / 备份 20.7MB 往返完整 / 写失败显示「保存失败 ⟳」。
+
+## 仍待做
+1. 照片库页面（列表、收藏、彻底删除 + 引用检查）。数据模型已支持，UI 未做。
+2. 「导入的这本」与「照片库」的边界：目前 tray 的删除 = 从这本移出。
+3. 配额接近上限时的预警与自动降级（现在是显示已用量）。
+4. 三条未实现的方向（Swiss / Experimental / Travel Journal）—— 等日式反馈。
