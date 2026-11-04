@@ -1337,7 +1337,10 @@
       del.textContent = '删';
       del.onclick = (function (p2) { return function () { removeProject(p2); }; })(pr);
 
-      row.appendChild(open); row.appendChild(ren); row.appendChild(dup); row.appendChild(del);
+      var acts = document.createElement('div');
+      acts.className = 'lib-acts';
+      acts.appendChild(open); acts.appendChild(ren); acts.appendChild(dup); acts.appendChild(del);
+      row.appendChild(acts);
       el.libList.appendChild(row);
     }
     if (!list.length) {

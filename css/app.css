@@ -412,3 +412,14 @@ body.solo-mode .page-wrap{margin:0}
 .lib-row.is-open .lib-title{color:#4a6b4a}
 .lib-row .btn{height:26px;padding:0 9px;font-size:11.5px}
 .lib-row.is-open .lib-title::after{content:" · 正在编辑";color:#4a6b4a;font-size:10.5px}
+
+.lib-acts{display:flex;gap:6px;flex:none}
+@media (max-width:560px){
+  .lib-row{flex-wrap:wrap;row-gap:10px}
+  .lib-meta{flex:1 1 calc(100% - 66px);min-width:0}
+  .lib-title{white-space:normal;line-height:1.35}
+  .lib-sub{display:block;line-height:1.5}
+  .lib-acts{flex:1 1 100%;justify-content:flex-end}
+  .lib-tools{gap:6px}
+  .lib-quota{flex:1 1 100%;text-align:left;margin:2px 0 0}
+}
