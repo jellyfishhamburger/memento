@@ -1157,7 +1157,7 @@ window.MEM = window.MEM || {};
       want = plan.want;
     } else {
       units = scheme.slice();
-      var wantUnits = opt.units || units.length;
+      var wantUnits = Math.max(1, Math.min(opt.units || units.length, list.length - 1));
       while (units.length < wantUnits) units.push(scheme[units.length % scheme.length]);
       units = units.slice(0, wantUnits);
       if (opt.units_override) units = opt.units_override;
@@ -1238,6 +1238,7 @@ window.MEM = window.MEM || {};
     assigned.forEach(function (u, i) {
       var ph = u.photos.filter(Boolean);
       if (!ph.length && pool.length) ph.push(pool.shift());
+      if (!ph.length) return;                     // a page with nothing to hold is not a page
       ctx.plate = ('0' + (i + 1)).slice(-2);
       ctx.line = lineFor({ lines: lines }, i);
       ctx.head = (jp || i > 0) ? sections[i % sections.length] : ctx.title;
