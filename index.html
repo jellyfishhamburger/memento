@@ -29,6 +29,19 @@
 <main class="shell">
   <aside class="rail">
     <section class="rail-block">
+      <h2 class="rail-title">排版引擎</h2>
+      <div id="engines" class="seg" role="group" aria-label="排版引擎">
+        <button type="button" data-engine="classic">经典</button>
+        <button type="button" data-engine="art">艺术指导</button>
+      </div>
+      <p id="engineNote" class="rail-note">经典＝现有构图库；艺术指导＝先读照片再定方向（实验）。</p>
+      <details id="artWhy" class="art-why" hidden>
+        <summary>这本书为什么这样排</summary>
+        <dl id="artWhyList"></dl>
+      </details>
+    </section>
+
+    <section class="rail-block">
       <h2 class="rail-title">设计方向</h2>
       <div id="dirs" class="opt-list"></div>
       <p id="dirNote" class="rail-note"></p>
@@ -266,6 +279,7 @@
 <script src="js/engine.js"></script>
 <script src="js/spread.js"></script>
 <script src="js/compose.js"></script>
+<script src="js/art.js"></script>
 <script src="js/text.js"></script>
 <script src="js/render.js"></script>
 <script src="js/export.js"></script>

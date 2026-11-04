@@ -5,7 +5,7 @@
   var M = window.MEM;
 
   var state = {
-    photos: [], zine: null, seed: 11, mode: 'C', scheme: 0, count: 9, density: 'normal',
+    photos: [], zine: null, seed: 11, mode: 'C', scheme: 0, count: 9, density: 'normal', engine: 'classic',
     title: '十一月的海', year: new Date().getFullYear(), busy: false, locked: {},
     direction: 'zine', texts: {},
     library: [],          // every photo in the browser database
@@ -43,7 +43,8 @@
 
   var $ = function (s) { return document.querySelector(s); };
   var el = {
-    modes: $('#modes'), schemes: $('#schemes'), counts: $('#counts'), countNote: $('#countNote'), tray: $('#tray'),
+    modes: $('#modes'), schemes: $('#schemes'), counts: $('#counts'),
+    engines: $('#engines'), engineNote: $('#engineNote'), countNote: $('#countNote'), tray: $('#tray'),
     dirs: $('#dirs'), dirNote: $('#dirNote'), modeBlock: $('#modeBlock'), schemeBlock: $('#schemeBlock'),
     btnText: $('#btnText'), textPanel: $('#textPanel'), textTitle: $('#textTitle'), textYear: $('#textYear'),
     textSections: $('#textSections'), textLines: $('#textLines'), textNote: $('#textNote'),
@@ -475,6 +476,8 @@
           bright: a.bright == null ? 0.5 : a.bright,
           sat: a.sat == null ? 0.3 : a.sat,
           detail: a.detail == null ? 0.2 : a.detail,
+          contrast: a.contrast == null ? null : a.contrast,
+          focus: a.focus == null ? null : a.focus,
           starred: !!s.starred
         });
       };
@@ -512,7 +515,8 @@
       storedScale: preview.scale,
       analysis: {
         ar: rec.ar, hero: rec.hero, focal: rec.focal, colors: rec.colors,
-        bright: rec.bright, sat: rec.sat, detail: rec.detail
+        bright: rec.bright, sat: rec.sat, detail: rec.detail,
+        contrast: rec.contrast, focus: rec.focus
       }
     };
     await M.STORE.putPhoto(stored);
@@ -811,12 +815,40 @@
       return { i: Number(k), key: L.key, photos: ph };
     });
 
+    if (state.engine === 'art' && M.ART) {
+      var t = textFor(state.direction);
+      state.zine = M.ART.compose(state.photos, {
+        seed: state.seed, title: t.title || '未命名的一卷', year: state.year,
+        lines: t.lines, head: t.sections && t.sections[0]
+      });
+      state.zine.art = true;
+      paintZine();
+      scheduleSave();
+      return;
+    }
     state.zine = M.composeBook(state.photos, {
       mode: state.mode, scheme: state.scheme, units: unitsWanted(),
       seed: state.seed, coverPhoto: state.coverPhoto, preset: preset,
       dir: state.direction, text: textFor(state.direction), pages: state.count - 1
     });
     paintZine();
+  }
+
+  function paintWhy() {
+    var box = document.getElementById('artWhy');
+    var list = document.getElementById('artWhyList');
+    if (!box || !list) return;
+    var z = state.zine;
+    var d = z && z.direction;
+    if (state.engine !== 'art' || !d) { box.hidden = true; return; }
+    box.hidden = false;
+    var p = z.profile;
+    list.innerHTML = z.direction.reasons.map(function (r) {
+      return '<div class="why-row"><dt>' + (r.k || '') + '<span>' + (r.v || '') + '</span></dt><dd>' + (r.why || '') + '</dd></div>';
+    }).join('') +
+      '<div class="why-row"><dt>读到<span>' + (p ? p.n : '') + ' 张</span></dt><dd>' +
+      '冷暖 ' + (p ? p.warmCool.toFixed(2) : '') + ' · 饱和 ' + (p ? p.sat.median.toFixed(2) : '') +
+      ' · 明暗跨度 ' + (p ? p.contrast.toFixed(2) : '') + ' · 繁忙 ' + (p ? p.busy.toFixed(2) : '') + '</dd></div>';
   }
 
   function paintZine() {
@@ -830,6 +862,15 @@
     el.empty.hidden = true;
     var cb = el.counts && el.counts.closest('.rail-block');
     if (cb) cb.hidden = isMemory();
+    if (el.engines) {
+      Array.prototype.forEach.call(el.engines.children, function (b) {
+        b.setAttribute('aria-pressed', String(b.dataset.engine === state.engine));
+      });
+      if (el.engineNote) el.engineNote.textContent = state.engine === 'art'
+        ? '艺术指导：先读这组照片的色温、饱和、明暗和繁忙度，再定密度曲线与构图族。'
+        : '经典＝现有构图库；艺术指导＝先读照片再定方向（实验）。';
+    }
+    paintWhy();
     var db = document.getElementById('blockDensity');
     if (db) db.hidden = !isMemory();
     Array.prototype.forEach.call(document.querySelectorAll('#densities button'), function (b) {
@@ -1283,6 +1324,15 @@
   }
 
   /* ---------------- wire up ---------------- */
+  if (el.engines) {
+    el.engines.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-engine]');
+      if (!b) return;
+      state.engine = b.dataset.engine;
+      buildRail(); rebuild();
+    });
+  }
+
   var densitiesEl = document.getElementById('densities');
   if (densitiesEl) {
     densitiesEl.addEventListener('click', function (e) {
@@ -1373,6 +1423,7 @@
     else if (mp === 'zine' || mp === 'grid' || mp === 'book') state.mode = 'C';   // old links
     if (qs.get('scheme')) state.scheme = parseInt(qs.get('scheme'), 10) || 0;
     if (qs.get('count')) state.count = parseInt(qs.get('count'), 10) === 11 ? 11 : 9;
+    if (qs.get('engine') === 'art') state.engine = 'art';
     if (qs.get('title')) { state.title = qs.get('title'); el.title.value = state.title; }
     if (qs.get('manifest')) manifest = qs.get('manifest');
   } catch (e) { /* ignore */ }
@@ -2074,6 +2125,9 @@
     versionPhotoIds: versionPhotoIds,
     openVersions: openVersions, saveNewVersion: saveNewVersion, restoreVersion: restoreVersion,
     project: function () { return project; }, loadLibrary: loadLibrary,
+    art: function () { return M.ART; },
+    setEngine: function (e) { state.engine = e; buildRail(); rebuild(); },
+    engine: function () { return state.engine; },
     report: function () { return { photos: state.photos.length, library: state.library.length, save: el.saveState ? el.saveState.dataset.state : '', obj: M.OBJ.stats() }; }
   };
 })();
