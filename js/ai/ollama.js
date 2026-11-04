@@ -8,12 +8,34 @@ window.MEM = window.MEM || {};
   var BASE_KEY = 'memento.ai.base';
   var MODEL_KEY = 'memento.ai.model';
 
+  /* Where the model lives.
+     1. a base the user set by hand, 2. the local server's own proxy (/ai),
+     3. Ollama straight on its port. The proxy exists because an https page
+     may not talk to http://127.0.0.1 — same-origin beats both problems. */
+  function manualBase() {
+    try { return localStorage.getItem(BASE_KEY) || ''; } catch (e) { return ''; }
+  }
+  function sameOriginProxy() {
+    if (location.protocol !== 'http:') return '';
+    return location.origin + '/ai';
+  }
+  var resolved = '';
   function base() {
-    try { return localStorage.getItem(BASE_KEY) || 'http://127.0.0.1:11434'; }
-    catch (e) { return 'http://127.0.0.1:11434'; }
+    return resolved || manualBase() || sameOriginProxy() || 'http://127.0.0.1:11434';
+  }
+  function candidates() {
+    var out = [];
+    if (manualBase()) out.push(manualBase());
+    if (sameOriginProxy()) out.push(sameOriginProxy());
+    out.push('http://127.0.0.1:11434');
+    return out.filter(function (v, i, a) { return v && a.indexOf(v) === i; });
   }
   function setBase(v) {
-    try { localStorage.setItem(BASE_KEY, v.replace(/\/+$/, '')); } catch (e) {}
+    resolved = '';
+    try {
+      if (v) localStorage.setItem(BASE_KEY, v.replace(/\/+$/, ''));
+      else localStorage.removeItem(BASE_KEY);
+    } catch (e) {}
   }
   function model() {
     try { return localStorage.getItem(MODEL_KEY) || ''; } catch (e) { return ''; }
@@ -43,17 +65,25 @@ window.MEM = window.MEM || {};
     base: base, setBase: setBase,
     model: model, setModel: setModel,
 
-    /* is anything listening? */
+    /* is anything listening? tries every candidate and remembers the winner */
     async health(timeout) {
-      try {
-        var r = await withTimeout(fetch(base() + '/api/tags', { method: 'GET' }), timeout || 2500);
-        if (!r.ok) return { ok: false, code: 'error', detail: 'HTTP ' + r.status };
-        var data = await r.json();
-        var models = (data.models || []).map(function (m) { return m.name; });
-        return { ok: true, models: models };
-      } catch (e) {
-        return { ok: false, code: classify(e), detail: String(e && e.message || e) };
+      var list = candidates();
+      var last = { ok: false, code: 'offline', detail: '' };
+      for (var i = 0; i < list.length; i++) {
+        try {
+          var r = await withTimeout(fetch(list[i] + '/api/tags', { method: 'GET' }), timeout || 2500);
+          if (!r.ok) { last = { ok: false, code: 'error', detail: 'HTTP ' + r.status }; continue; }
+          var data = await r.json();
+          resolved = list[i];
+          return { ok: true, models: (data.models || []).map(function (m) { return m.name; }), base: list[i] };
+        } catch (e) {
+          last = { ok: false, code: classify(e), detail: String(e && e.message || e) };
+        }
       }
+      resolved = '';
+      last.probed = list;
+      last.https = location.protocol === 'https:';
+      return last;
     },
 
     /* one structured-output call */

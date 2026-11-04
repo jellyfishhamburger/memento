@@ -44,6 +44,16 @@
       <div id="schemes" class="opt-list opt-list--tight"></div>
     </section>
 
+    <section class="rail-block" id="blockDensity" hidden>
+      <h2 class="rail-title">松紧</h2>
+      <div id="densities" class="seg" role="group" aria-label="松紧">
+        <button type="button" data-density="tight">紧凑</button>
+        <button type="button" data-density="normal">标准</button>
+        <button type="button" data-density="airy">舒展</button>
+      </div>
+      <p id="densityNote" class="rail-note">松开一点，每页少放几张、页数变多。</p>
+    </section>
+
     <section class="rail-block">
       <h2 class="rail-title">张数</h2>
       <div id="counts" class="seg" role="group" aria-label="张数">
@@ -136,10 +146,13 @@
         <p id="aiStatus" class="ai-status" data-state="idle">本地文字助手：检查中…</p>
         <div id="aiIdeas" class="ai-ideas"></div>
         <details class="ai-help">
-          <summary>本地模型怎么开</summary>
-          <p>需要本机装 Ollama，并允许这个页面访问它：</p>
-          <code>OLLAMA_ORIGINS=* ollama serve</code>
-          <p>然后 <code>ollama pull qwen2.5:7b</code>（任意会写中文的模型都行）。没有模型时，上面的按钮会给内置模板，其它功能照常。</p>
+          <summary>连不上？三步</summary>
+          <p><b>1. 用本地版打开</b>（线上 https 版永远连不到你电脑上的 Ollama）：
+            双击 memento 文件夹里的 <code>start-local.cmd</code>，它会打开
+             <code>http://127.0.0.1:8899/</code>，并把 Ollama 代理在同一个地址下。</p>
+          <p><b>2. 另开一个窗口启动模型</b>：<code>ollama serve</code></p>
+          <p><b>3. 想用更强的模型</b>：<code>ollama pull qwen2.5:7b</code>，然后在上面的模型下拉里选它。</p>
+          <p>连不上时按钮会给内置模板，其余功能照常。</p>
         </details>
       </div>
 

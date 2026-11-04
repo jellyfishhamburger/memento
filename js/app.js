@@ -5,7 +5,7 @@
   var M = window.MEM;
 
   var state = {
-    photos: [], zine: null, seed: 11, mode: 'C', scheme: 0, count: 9,
+    photos: [], zine: null, seed: 11, mode: 'C', scheme: 0, count: 9, density: 'normal',
     title: '十一月的海', year: new Date().getFullYear(), busy: false, locked: {},
     direction: 'zine', texts: {},
     library: [],          // every photo in the browser database
@@ -27,13 +27,15 @@
   function isMemory() { return !!(project && project.kind === 'memory'); }
 
   /* a social work is exactly nine (or eleven) images.
-     A memory book has no page limit: the photos decide the length. */
+     A memory book has no page limit: the photos and the chosen looseness decide. */
+  var DENSITY = { tight: 9, normal: 6.4, airy: 3.2 };   // photos per spread
   function unitsWanted() {
     if (isMemory()) {
       var n = state.photos.length;
-      var perSpread = state.mode === 'A' ? 3.2 : 6.4;   // single pages hold fewer
-      var units = Math.max(3, Math.round(n / perSpread));
-      return Math.min(units, 60);                        // sanity cap, not a product limit
+      var per = DENSITY[state.density] || DENSITY.normal;
+      if (state.mode === 'A') per = per / 2;            // single pages hold fewer
+      var units = Math.max(3, Math.round(n / per));
+      return Math.min(units, 80);                        // sanity cap, not a product limit
     }
     if (state.mode === 'A') return state.count === 9 ? 8 : 10;
     return state.count === 9 ? 4 : 5;
@@ -634,6 +636,7 @@
       schemaVersion: 1,
       direction: state.direction,
       mode: state.mode, scheme: state.scheme, count: state.count, seed: state.seed,
+      density: state.density,
       locked: JSON.parse(JSON.stringify(state.locked || {})),
       texts: JSON.parse(JSON.stringify(state.texts || {})),
       photoIds: state.photos.map(function (p) { return p.id; }),
@@ -748,6 +751,7 @@
     state.scheme = snap.scheme || 0;
     state.count = snap.count || 9;
     state.seed = snap.seed || 11;
+    state.density = snap.density || 'normal';
     state.locked = JSON.parse(JSON.stringify(snap.locked || {}));
     state.texts = JSON.parse(JSON.stringify(snap.texts || {}));
 
@@ -826,6 +830,11 @@
     el.empty.hidden = true;
     var cb = el.counts && el.counts.closest('.rail-block');
     if (cb) cb.hidden = isMemory();
+    var db = document.getElementById('blockDensity');
+    if (db) db.hidden = !isMemory();
+    Array.prototype.forEach.call(document.querySelectorAll('#densities button'), function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.density === state.density));
+    });
     el.zineList.innerHTML = '';
     var stageW = (el.zineList.clientWidth || 1000) - 56;   // leave room for the lock tools beside the pages
     var pair = z.pair;
@@ -1274,6 +1283,19 @@
   }
 
   /* ---------------- wire up ---------------- */
+  var densitiesEl = document.getElementById('densities');
+  if (densitiesEl) {
+    densitiesEl.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-density]');
+      if (!b) return;
+      state.density = b.dataset.density;
+      state.locked = {};
+      buildRail(); rebuild(); scheduleSave();
+      toast(state.density === 'airy' ? '舒展：每页少放几张，页数变多'
+        : state.density === 'tight' ? '紧凑：每页多放几张，页数变少' : '标准松紧');
+    });
+  }
+
   el.counts.addEventListener('click', function (e) {
     var b = e.target.closest('button[data-count]');
     if (!b) return;

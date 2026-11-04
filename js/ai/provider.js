@@ -15,7 +15,8 @@ window.MEM = window.MEM || {};
       var h = await M.AI.ollama.health();
       state = {
         checked: true, ok: !!h.ok, code: h.ok ? 'ready' : h.code,
-        models: h.models || [], detail: h.detail || ''
+        models: h.models || [], detail: h.detail || '',
+        base: h.base || '', https: !!h.https
       };
       if (state.ok && !M.AI.ollama.model() && state.models.length) {
         // prefer a vision-capable small model if it is there, else whatever is first
@@ -27,8 +28,13 @@ window.MEM = window.MEM || {};
 
     /* a sentence the UI can show without jargon */
     explain: function () {
-      if (state.ok) return '本地模型：' + (M.AI.ollama.model() || '未选择');
-      if (state.code === 'offline') return '本机没有在跑 Ollama（文字灵感需要它）';
+      if (state.ok) return '本地模型：' + (M.AI.ollama.model() || '未选择') +
+        (state.base ? '  ·  ' + state.base.replace(/^https?:\/\//, '') : '');
+      if (state.code === 'offline' && state.https) {
+        return '线上版（https）不能访问本机的 Ollama —— 浏览器禁止 https 页面连 http 服务。' +
+          '用本地版：双击 memento 文件夹里的 start-local.cmd';
+      }
+      if (state.code === 'offline') return '连不上 Ollama：本机没在跑，或没允许这个页面访问（见下面怎么开）';
       if (state.code === 'timeout') return 'Ollama 没有响应（可能卡住了）';
       if (state.code === 'model') return '模型不存在，换一个再试';
       return 'AI 暂时用不了，可以先用内置模板';
