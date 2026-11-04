@@ -27,6 +27,7 @@
     <section class="rail-block">
       <div class="seg" id="modes" role="group" aria-label="模式">
         <button type="button" data-mode="book" aria-pressed="true">作品集</button>
+        <button type="button" data-mode="zine" aria-pressed="false">小书</button>
         <button type="button" data-mode="grid" aria-pressed="false">九宫格</button>
       </div>
     </section>
@@ -45,7 +46,7 @@
       <div id="layouts" class="opt-list"></div>
     </section>
 
-    <section class="rail-block">
+    <section class="rail-block" id="blockPlan">
       <h2 class="rail-title">编排方案</h2>
       <div id="plans" class="opt-list opt-list--tight"></div>
     </section>
@@ -87,6 +88,13 @@
     </div>
     <div id="pages" class="pages" hidden></div>
     <p id="stageHint" class="stage-hint" hidden>点页面里的照片：换图 / 删图　·　点页面空白：放大看</p>
+    <div id="zinePanel" class="zine-panel" hidden>
+      <div class="zine-head">
+        <h1 class="grid-title">小书</h1>
+        <p id="zineNote" class="grid-note"></p>
+      </div>
+      <div id="zineList" class="zine-list"></div>
+    </div>
     <div id="gridPanel" class="grid-panel" hidden>
       <div class="grid-head">
         <h1 class="grid-title">九宫格</h1>
@@ -133,6 +141,7 @@
 <script src="js/analyze.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/grid.js"></script>
+<script src="js/spread.js"></script>
 <script src="js/render.js"></script>
 <script src="js/export.js"></script>
 <script src="js/app.js"></script>

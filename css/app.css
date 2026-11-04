@@ -129,7 +129,7 @@ button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer}
 .page-wrap{overflow:hidden;position:relative;background:#fff}
 .page{position:relative;transform-origin:top left;overflow:hidden}
 .page .frame{position:absolute;overflow:hidden}
-.page .frame-paper{position:absolute;background:#fbf8f1;box-shadow:0 1px 2px rgba(0,0,0,.14),0 8px 18px -8px rgba(0,0,0,.28)}
+.page .frame-paper{position:absolute;background:#fff;box-shadow:0 1px 1px rgba(0,0,0,.10)}
 .page .frame-inner{position:absolute;inset:0;overflow:hidden}
 .page .txt{position:absolute;white-space:pre;font-kerning:normal}
 .page .rect{position:absolute}
@@ -261,6 +261,23 @@ body.solo-mode .page-wrap{margin:0}
 .picker-actions{display:flex;gap:8px;padding:0 18px 16px;grid-column:1/-1;margin-top:4px}
 .btn-danger{border-color:#9d3a2a;color:#9d3a2a}
 .btn-danger:hover{background:#9d3a2a;color:#fff;border-color:#9d3a2a}
+
+/* ---------- zine (小书 / 跨页) ---------- */
+.zine-panel{display:flex;flex-direction:column;gap:14px;max-width:1080px}
+.zine-head{max-width:56ch}
+.zine-list{display:flex;flex-direction:column;gap:30px}
+.spread-row{display:flex;gap:2px;align-items:flex-start;position:relative}
+.spread-row--single{margin-left:0}
+.spread-label{
+  position:absolute;left:0;top:-17px;font-size:10.5px;letter-spacing:.12em;color:var(--faint);
+  font-variant-numeric:tabular-nums;
+}
+.spread-row .page-wrap{background:#fff}
+.spread-row .page-btn{border:0;padding:0;background:transparent;display:block;cursor:zoom-in}
+.spread-row .page-btn::after{
+  content:"";position:absolute;inset:0;border:1px solid rgba(26,24,21,.12);pointer-events:none;
+}
+.spread-row .page-btn:hover::after{border-color:rgba(26,24,21,.5)}
 
 @media (max-width:900px){
   .bar{height:auto;flex-wrap:wrap;padding:8px 12px;gap:8px}

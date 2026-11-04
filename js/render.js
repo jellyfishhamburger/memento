@@ -142,10 +142,10 @@ window.MEM = window.MEM || {};
       }
       var iw = f.w - f.pad * 2, ih = f.h - f.pad * 2;
       if (f.pad > 0) {
-        ctx.shadowColor = 'rgba(0,0,0,.28)';
-        ctx.shadowBlur = 14 * (f.w / 300);
-        ctx.shadowOffsetY = 3 * (f.w / 300);
-        ctx.fillStyle = '#fbf8f1';
+        ctx.shadowColor = 'rgba(0,0,0,.18)';
+        ctx.shadowBlur = 4 * (f.w / 300);
+        ctx.shadowOffsetY = 1 * (f.w / 300);
+        ctx.fillStyle = '#ffffff';
         ctx.fillRect(f.x, f.y, f.w, f.h);
         ctx.shadowColor = 'transparent';
         ctx.shadowBlur = 0;

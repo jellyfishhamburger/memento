@@ -4,7 +4,7 @@
   var M = window.MEM;
 
   var state = {
-    photos: [], pages: [], grid: null, book: null,
+    photos: [], pages: [], grid: null, book: null, zine: null, repaint: null,
     mode: 'book', style: 'editorial', plan: 'hero', format: 'portrait', layout: 'paper',
     fill: 'mosaic', pageTarget: 0, excluded: {}, seed: 11, title: '十一月的海',
     year: new Date().getFullYear(), busy: false
@@ -19,7 +19,9 @@
     pages: $('#pages'), empty: $('#empty'), stat: $('#statLine'),
     gridPanel: $('#gridPanel'), gridWrap: $('#gridWrap'), gridStrip: $('#gridStrip'),
     gridNote: $('#gridNote'), gridWhy: $('#gridWhy'),
+    zinePanel: $('#zinePanel'), zineList: $('#zineList'), zineNote: $('#zineNote'),
     blockStyles: $('#blockStyles'), blockFormat: $('#blockFormat'), blockGrid: $('#blockGrid'),
+    blockPlan: $('#blockPlan'),
     title: $('#titleInput'), file: $('#fileInput'),
     btnImport: $('#btnImport'), btnPNG: $('#btnPNG'), btnPDF: $('#btnPDF'), btnTall: $('#btnTall'),
     btnShuffle: $('#btnShuffle'), btnPick: $('#btnPick'), btnDemo: $('#btnDemo'),
@@ -40,14 +42,16 @@
   /* ---------------- ui ---------------- */
   function buildOptions() {
     var isGrid = state.mode === 'grid';
+    var isZine = state.mode === 'zine';
 
     Array.prototype.forEach.call(el.modes.children, function (b) {
       b.setAttribute('aria-pressed', String(b.dataset.mode === state.mode));
     });
-    el.blockStyles.hidden = isGrid;
-    el.blockFormat.hidden = isGrid;
+    el.blockStyles.hidden = isGrid || isZine;
+    el.blockFormat.hidden = isGrid || isZine;
     el.blockGrid.hidden = !isGrid;
-    el.blockPages.hidden = isGrid;
+    el.blockPages.hidden = isGrid || isZine;
+    if (el.blockPlan) el.blockPlan.hidden = isZine;
 
     Array.prototype.forEach.call(el.pageTargets.children, function (b) {
       b.setAttribute('aria-pressed', String(Number(b.dataset.pages) === state.pageTarget));
@@ -118,8 +122,10 @@
 
     el.btnPDF.hidden = isGrid;
     el.btnTall.hidden = isGrid;
-    el.btnPNG.textContent = isGrid ? '导出九张' : '导出图片';
-    el.btnShuffle.textContent = isGrid ? '换一组' : '换一版编排';
+    el.btnPDF.hidden = isGrid || isZine;
+    el.btnTall.hidden = isGrid || isZine;
+    el.btnPNG.textContent = isZine ? '导出九张' : isGrid ? '导出九张' : '导出图片';
+    el.btnShuffle.textContent = isZine ? '换一版编排' : isGrid ? '换一组' : '换一版编排';
   }
 
   function buildTray() {
@@ -200,6 +206,7 @@
     var photos = state.photos.filter(function (p) { return !state.excluded[p.id]; });
     if (!photos.length) {
       el.pages.hidden = true; el.empty.hidden = false; el.gridPanel.hidden = true;
+      el.zinePanel.hidden = true;
       el.stageHint.hidden = true;
       el.btnPNG.disabled = true; el.btnPDF.disabled = true; el.btnTall.disabled = true;
       el.btnShuffle.disabled = true;
@@ -212,6 +219,8 @@
 
     if (state.mode === 'grid') {
       renderGrid(photos);
+    } else if (state.mode === 'zine') {
+      renderZine(photos);
     } else {
       renderBook(photos);
     }
@@ -220,6 +229,7 @@
   /* ---------------- book ---------------- */
   function renderBook(photos) {
     el.gridPanel.hidden = true;
+    el.zinePanel.hidden = true;
     el.pages.hidden = false;
     var res = M.build(photos, {
       style: state.style, plan: state.plan, format: state.format,
@@ -228,6 +238,7 @@
     });
     state.book = res;
     state.pages = res.pages;
+    state.repaint = paintBook;
     setStat(photos.length + ' 张 · ' + res.pages.length + ' 页');
     if (state.pageTarget && res.pages.length !== state.pageTarget) {
       el.pageNote.textContent = '这组照片排不满 ' + state.pageTarget + ' 页，现在是 ' +
@@ -275,6 +286,67 @@
     });
     el.stageHint.hidden = false;
   }
+
+  /* ---------------- zine: portrait pages that pair into spreads ---------------- */
+  function renderZine(photos) {
+    el.pages.hidden = true; el.gridPanel.hidden = true; el.stageHint.hidden = true;
+    el.zinePanel.hidden = false;
+    var z = M.buildZine(photos, {
+      seed: state.seed, title: state.title || '未命名的一卷', year: state.year, spreads: 4
+    });
+    state.zine = z;
+    state.pages = z.pages;
+    state.repaint = paintZine;
+    paintZine();
+  }
+
+  function paintZine() {
+    var z = state.zine;
+    if (!z || !z.pages.length) return;
+    el.zineList.innerHTML = '';
+    var scale = 292 / z.pages[0].w;
+
+    function pageBtn(pg, pi, label) {
+      var btn = document.createElement('button');
+      btn.className = 'page-btn'; btn.type = 'button';
+      btn.setAttribute('aria-label', '放大 ' + label);
+      btn.appendChild(M.renderPage(pg, scale, {
+        frameClick: function (fi) { openEditor(pi, fi); }
+      }));
+      btn.onclick = function () { openLightbox(pi, z.pages); };
+      return btn;
+    }
+
+    // cover
+    var row0 = document.createElement('div');
+    row0.className = 'spread-row spread-row--single';
+    var l0 = document.createElement('span');
+    l0.className = 'spread-label';
+    l0.textContent = '01 · 封面';
+    row0.appendChild(pageBtn(z.pages[0], 0, '封面'));
+    row0.appendChild(l0);
+    el.zineList.appendChild(row0);
+
+    z.spreads.forEach(function (sp, i) {
+      var row = document.createElement('div');
+      row.className = 'spread-row';
+      var lab = document.createElement('span');
+      lab.className = 'spread-label';
+      lab.textContent = pad2(2 + i * 2) + ' — ' + pad2(3 + i * 2) + ' · ' + sp.name +
+        ' · ' + sp.photos.length + ' 张';
+      row.appendChild(pageBtn(sp.a, 1 + i * 2, '第 ' + (2 + i * 2) + ' 页'));
+      row.appendChild(pageBtn(sp.b, 2 + i * 2, '第 ' + (3 + i * 2) + ' 页'));
+      row.appendChild(lab);
+      el.zineList.appendChild(row);
+    });
+
+    el.zineNote.textContent = z.total + ' 张 · ' + z.pages.length +
+      ' 张图（1 封面 + ' + z.spreads.length + ' 个跨页）· 相邻两张是一页展开：' +
+      '手机上一左一右滑过去，横图会连起来。';
+    setStat(z.total + ' 张 · ' + z.pages.length + ' 张图');
+  }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
   /* ---------------- swap / delete ---------------- */
   var editTarget = null;
@@ -359,7 +431,7 @@
     setFramePhoto(frame, target);
     if (from) setFramePhoto(state.pages[from.pj].frames[from.fj], cur);
     closePicker();
-    paintBook();
+    if (state.repaint) state.repaint();
     toast(from ? '两张互换了位置' : '换好了');
   }
 
@@ -481,7 +553,9 @@
   async function doExport(kind) {
     if (state.busy) return;
     var isGrid = state.mode === 'grid';
-    if (isGrid ? !state.grid || !state.grid.tiles.length : !state.pages.length) return;
+    var isZine = state.mode === 'zine';
+    var pages = isZine ? (state.zine && state.zine.pages) : state.pages;
+    if (isGrid ? (!state.grid || !state.grid.tiles.length) : !pages || !pages.length) return;
     state.busy = true;
     toast(kind === 'grid' ? '正在导出九张…' : kind === 'pdf' ? '正在生成 PDF…' : kind === 'tall' ? '正在拼长图…' : '正在导出图片…');
     try {
@@ -489,13 +563,13 @@
         var n = await M.exportGrid(state.grid, state.title, { scale: 1 });
         toast('已导出 ' + n + ' 张 1080×1080（浏览器可能询问是否允许多文件下载）');
       } else if (kind === 'pdf') {
-        var bytes = await M.exportPDF(state.pages, state.title);
+        var bytes = await M.exportPDF(pages, state.title);
         toast('PDF 已生成 · ' + Math.round(bytes / 1024) + ' KB');
       } else if (kind === 'tall') {
-        var info = await M.exportTall(state.pages, state.title);
+        var info = await M.exportTall(pages, state.title);
         toast('长图已生成 · ' + info.w + '×' + info.h + ' · ' + info.kb + ' KB');
       } else {
-        var k = await M.exportPNG(state.pages, state.title);
+        var k = await M.exportPNG(pages, state.title);
         toast('已导出 ' + k + ' 张 PNG');
       }
     } catch (err) {
@@ -624,7 +698,7 @@
       pickList = qs.get('pick').split(',').map(function (s) { return parseInt(s, 10); })
         .filter(function (n) { return n > 0; });
     }
-    if (state.mode !== 'grid' && state.mode !== 'book') state.mode = 'book';
+    if (['book', 'grid', 'zine'].indexOf(state.mode) < 0) state.mode = 'book';
     if (qs.get('title')) { state.title = qs.get('title'); el.title.value = state.title; }
     if (qs.get('solo') != null) solo = parseInt(qs.get('solo'), 10) || 0;
     if (qs.get('scale')) soloScale = parseFloat(qs.get('scale')) || 1;
