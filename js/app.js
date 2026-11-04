@@ -49,7 +49,9 @@
     toast: $('#toast'), saveState: $('#saveState'),
     versions: $('#versions'), verList: $('#verList'), verName: $('#verName'),
     verSave: $('#verSave'), verClose: $('#verClose'), verNote: $('#verNote'),
-    btnVersion: $('#btnVersion'), btnLibrary: $('#btnLibrary'),
+    btnVersion: $('#btnVersion'), btnLibrary: $('#btnLibrary'), btnPhotos: $('#btnPhotos'),
+    photoLib: $('#photoLib'), plibGrid: $('#plibGrid'), plibNote: $('#plibNote'),
+    plibCount: $('#plibCount'), plibFilter: $('#plibFilter'), plibClose: $('#plibClose'),
     library: $('#library'), libList: $('#libList'), libNote: $('#libNote'), libQuota: $('#libQuota'),
     libNew: $('#libNew'), libBackup: $('#libBackup'), libImport: $('#libImport'),
     libClose: $('#libClose'), backupInput: $('#backupInput'),
@@ -1275,6 +1277,19 @@
     el.libQuota.textContent = '已用 ' + (e.usage / 1048576).toFixed(1) + ' MB' +
       (e.quota ? ' / 可用 ' + Math.round(e.quota / 1073741824 * 10) / 10 + ' GB' : '') +
       (saved ? ' · 已申请长期保存' : '');
+    var warn = document.querySelector('#quotaWarn');
+    if (warn) {
+      if (e.pct > 0.8) {
+        warn.hidden = false;
+        warn.textContent = '本地空间快满了（已用 ' + Math.round(e.pct * 100) + '%）。' +
+          (saved ? '' : '建议先点「导出全部备份」，再删掉不用的照片。');
+      } else if (!saved && e.usage > 200 * 1048576) {
+        warn.hidden = false;
+        warn.textContent = '浏览器随时可能清理本地数据，建议导出备份。';
+      } else {
+        warn.hidden = true;
+      }
+    }
   }
 
   async function openLibrary() {
@@ -1460,6 +1475,141 @@
   el.libClose.onclick = closeLibrary;
   el.libNew.onclick = newProject;
   el.library.addEventListener('click', function (e) { if (e.target === el.library) closeLibrary(); });
+
+  /* ---------------- photo library (the whole shelf) ---------------- */
+  var plibFilter = 'all';
+
+  async function openPhotoLibrary() {
+    el.photoLib.hidden = false;
+    await renderPhotoLibrary();
+  }
+  function closePhotoLibrary() { el.photoLib.hidden = true; }
+
+  async function renderPhotoLibrary() {
+    var all = state.library;
+    var used = {};
+    state.photos.forEach(function (p) { used[p.id] = (used[p.id] || 0) + 1; });
+
+    // how many books reference each photo (from their versions)
+    var books = {};
+    var projects = await M.STORE.listProjects();
+    for (var i = 0; i < projects.length; i++) {
+      var vs = await M.STORE.listVersions(projects[i].id);
+      var draft = vs.filter(function (v) { return v.isAutoSaved; })[0];
+      var snap = draft && draft.snapshot;
+      if (!snap) continue;
+      var ids = snap.photoIds || [];
+      ids.forEach(function (id) { books[id] = (books[id] || 0) + 1; });
+    }
+
+    var list = all.slice();
+    if (plibFilter === 'star') list = list.filter(function (p) { return p.starred; });
+    if (plibFilter === 'unused') list = list.filter(function (p) { return !books[p.id]; });
+    list.sort(function (a, b) { return (b.importedAt || 0) - (a.importedAt || 0); });
+
+    Array.prototype.forEach.call(el.plibFilter.children, function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.filter === plibFilter));
+    });
+
+    var e = await M.STORE.estimate();
+    el.plibCount.textContent = all.length + ' 张 · ' +
+      all.filter(function (p) { return p.starred; }).length + ' 张收藏' +
+      (e ? ' · 已用 ' + (e.usage / 1048576).toFixed(1) + ' MB' : '');
+
+    el.plibGrid.innerHTML = '';
+    if (!list.length) {
+      var empty = document.createElement('p');
+      empty.className = 'lib-sub';
+      empty.style.gridColumn = '1/-1';
+      empty.textContent = plibFilter === 'unused' ? '每一张都用上了。' : '这里还没有照片。';
+      el.plibGrid.appendChild(empty);
+      return;
+    }
+
+    list.forEach(function (p) {
+      var box = document.createElement('div');
+      box.className = 'plib-item';
+      var im = document.createElement('img');
+      im.src = p.url; im.alt = p.name || '';
+      im.loading = 'lazy';
+      box.appendChild(im);
+
+      var star = document.createElement('span');
+      star.className = 'plib-star';
+      star.textContent = p.starred ? '★' : '☆';
+      star.title = p.starred ? '取消收藏' : '收藏（★ 优先当主视觉）';
+      star.onclick = async function () {
+        p.starred = !p.starred;
+        await M.STORE.setStarred(p.id, p.starred);
+        if (state.photos.indexOf(p) >= 0) { rebuild(); }
+        renderPhotoLibrary();
+      };
+      box.appendChild(star);
+
+      var n = books[p.id] || 0;
+      var tag = document.createElement('span');
+      tag.className = 'plib-used';
+      tag.textContent = n ? n + ' 本' : (used[p.id] ? '本册' : '未用');
+      box.appendChild(tag);
+
+      var acts = document.createElement('div');
+      acts.className = 'plib-act';
+      if (!used[p.id]) {
+        var add = document.createElement('button');
+        add.textContent = '加入这本';
+        add.onclick = async function () {
+          if (state.photos.indexOf(p) < 0) {
+            state.photos.push(p);
+            buildTray(); rebuild(); scheduleSave();
+            toast('加到这本了');
+          }
+        };
+        acts.appendChild(add);
+      }
+      var del = document.createElement('button');
+      del.textContent = '彻底删';
+      del.onclick = function () { deleteFromLibrary(p, books[p.id] || 0); };
+      acts.appendChild(del);
+      box.appendChild(acts);
+
+      el.plibGrid.appendChild(box);
+    });
+  }
+
+  async function deleteFromLibrary(p, bookCount) {
+    var inThisBook = state.photos.indexOf(p) >= 0;
+    var msg = '从照片库里彻底删掉这张？';
+    if (bookCount) msg = '这 张 还 在 ' + bookCount + ' 本作品里用着。删掉后那些作品会缺一张图。确定要删？';
+    else if (inThisBook) msg = '这张正在这本里用着，删掉会从书里拿掉。确定要删？';
+    if (!confirm(msg)) return;
+
+    // pull it out of the open book first so the render no longer points at it
+    var idx = state.photos.indexOf(p);
+    if (idx >= 0) state.photos.splice(idx, 1);
+
+    await M.STORE.deletePhoto(p.id);
+    var li = state.library.indexOf(p);
+    if (li >= 0) state.library.splice(li, 1);
+    M.OBJ.release(p.id);
+    p.img = null;
+
+    buildTray();
+    if (state.photos.length) rebuild();
+    else { state.zine = null; el.zinePanel.hidden = true; el.empty.hidden = false; buildTray(); }
+    scheduleSave();
+    await renderPhotoLibrary();
+    toast('已从照片库删除（作品里引用它的那一格会空出来）');
+  }
+
+  el.btnPhotos.onclick = openPhotoLibrary;
+  el.plibClose.onclick = closePhotoLibrary;
+  el.photoLib.addEventListener('click', function (e) { if (e.target === el.photoLib) closePhotoLibrary(); });
+  el.plibFilter.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-filter]');
+    if (!b) return;
+    plibFilter = b.dataset.filter;
+    renderPhotoLibrary();
+  });
 
   /* ---------------- boot ---------------- */
   async function loadLibrary() {

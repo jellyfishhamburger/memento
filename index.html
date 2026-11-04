@@ -18,6 +18,7 @@
   <span id="saveState" class="save-state" data-state="idle" title="本地保存状态"></span>
   <span id="statLine" class="stat">还没有照片</span>
   <button id="btnText" class="btn btn-ghost">文字</button>
+  <button id="btnPhotos" class="btn btn-ghost">照片库</button>
   <button id="btnLibrary" class="btn btn-ghost">作品库</button>
   <button id="btnImport" class="btn btn-ghost">导入照片</button>
   <button id="btnVersion" class="btn btn-ghost" disabled>保存版本</button>
@@ -182,7 +183,29 @@
       <button id="libImport" class="btn btn-ghost">导入备份</button>
       <span id="libQuota" class="lib-quota"></span>
     </div>
+    <p id="quotaWarn" class="quota-warn" hidden></p>
     <div id="libList" class="lib-list"></div>
+  </div>
+</div>
+
+<div id="photoLib" class="saved" hidden>
+  <div class="saved-card plibcard">
+    <div class="saved-head">
+      <div>
+        <h2 class="saved-title">照片库</h2>
+        <p id="plibNote" class="saved-note">照片只存一份，所有作品共用。从作品里移出不会删照片。</p>
+      </div>
+      <button id="plibClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="lib-tools">
+      <div class="seg seg--sm" id="plibFilter" role="group">
+        <button type="button" data-filter="all">全部</button>
+        <button type="button" data-filter="star">★ 收藏</button>
+        <button type="button" data-filter="unused">没用上</button>
+      </div>
+      <span id="plibCount" class="lib-quota"></span>
+    </div>
+    <div id="plibGrid" class="plib-grid"></div>
   </div>
 </div>
 

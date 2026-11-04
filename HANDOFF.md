@@ -86,3 +86,16 @@ node _inspect/accept.mjs     # 全流程：导入→刷新→版本→恢复→�
 2. 「导入的这本」与「照片库」的边界：目前 tray 的删除 = 从这本移出。
 3. 配额接近上限时的预警与自动降级（现在是显示已用量）。
 4. 三条未实现的方向（Swiss / Experimental / Travel Journal）—— 等日式反馈。
+
+## 追加：照片库（同一天）
+
+- 顶栏「照片库」：`#photoLib`，网格 5 列（手机 3 列）。
+- 每格：☆/★ 收藏（写 `photos.starred`，★ 会被 `compose.js` 当成主视觉优先）、引用计数标签（`N 本` / `本册` / `未用`）、「加入这本」「彻底删」。
+- 筛选：全部 / ★ 收藏 / 没用上；按 `importedAt` 倒序。
+- `deleteFromLibrary()`：先 `projectsUsingPhoto` 查引用 → 有引用弹明确警告 → `STORE.deletePhoto` + `OBJ.release` + 从 `state.photos` 摘掉 → 重排。
+- 配额：`showQuota()` 在 >80% 时点亮 `#quotaWarn`（伪造 estimate 测过）。
+- 手机：`@media (max-width:560px),(hover:none)` 让操做按钮常显（触屏没有 hover，之前 opacity:0 等于不可点）。
+
+### 仍未做
+- 照片标签（tags）字段还没用上；`analysis` 里没有语义内容（分不清海边/街道），所以「自动挑主视觉」仍只看比例、明暗、色彩。
+- 照片库没有搜索/批量选择。
