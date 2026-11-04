@@ -6,13 +6,21 @@
 
   var state = {
     photos: [], zine: null, seed: 11, mode: 'C', scheme: 0, count: 9,
-    title: '十一月的海', year: new Date().getFullYear(), busy: false, locked: {}
+    title: '十一月的海', year: new Date().getFullYear(), busy: false, locked: {},
+    direction: 'zine', texts: {}
   };
 
   var MODES = [
     { key: 'A', name: '编辑杂志', note: '单页构图：主图 + 细节，大片留白' },
     { key: 'B', name: '跨页全景', note: '两张一组：图跨中缝，冲击力优先' },
     { key: 'C', name: '摄影小书', note: '整本叙事：开场 → 细节 → 高潮 → 收尾' }
+  ];
+
+  /* a design direction owns composition, rhythm and voice. Adding one is not a
+     new skin: it brings its own pages, its own beat and its own words. */
+  var DIRS = [
+    { key: 'zine', name: '杂志 Zine', note: '三个排版模式共用一套构图库，字压图、密度高。' },
+    { key: 'jp', name: '日式小书', note: '宽边距、小字、一页一个主意；开场 → 展开 → 跨页高潮 → 收尾。' }
   ];
   function unitsWanted() {
     if (state.mode === 'A') return state.count === 9 ? 8 : 10;
@@ -22,6 +30,10 @@
   var $ = function (s) { return document.querySelector(s); };
   var el = {
     modes: $('#modes'), schemes: $('#schemes'), counts: $('#counts'), countNote: $('#countNote'), tray: $('#tray'),
+    dirs: $('#dirs'), dirNote: $('#dirNote'), modeBlock: $('#modeBlock'), schemeBlock: $('#schemeBlock'),
+    btnText: $('#btnText'), textPanel: $('#textPanel'), textTitle: $('#textTitle'), textYear: $('#textYear'),
+    textSections: $('#textSections'), textLines: $('#textLines'), textNote: $('#textNote'),
+    textReset: $('#textReset'), textDone: $('#textDone'), textClose: $('#textClose'),
     empty: $('#empty'), stat: $('#statLine'),
     zinePanel: $('#zinePanel'), zineList: $('#zineList'), zineNote: $('#zineNote'),
     title: $('#titleInput'), file: $('#fileInput'),
@@ -38,7 +50,31 @@
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
   /* ---------------- rail ---------------- */
+  function isJp() { return state.direction === 'jp'; }
+
   function buildRail() {
+    el.dirs.innerHTML = '';
+    DIRS.forEach(function (d) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'opt';
+      b.setAttribute('aria-pressed', String(state.direction === d.key));
+      b.innerHTML = '<span class="opt-body"><span class="opt-name">' + d.name + '</span></span>';
+      b.onclick = function () {
+        if (state.direction === d.key) return;
+        state.direction = d.key;
+        saveDir();
+        state.locked = {}; state.forced = {};
+        el.title.value = textFor(d.key).title;
+        buildRail(); rebuild();
+      };
+      el.dirs.appendChild(b);
+    });
+    el.dirNote.textContent = (DIRS.filter(function (d) { return d.key === state.direction; })[0] || DIRS[0]).note;
+
+    // the japanese book has its own fixed narrative: no A/B/C, no scheme orders
+    el.modeBlock.hidden = isJp();
+    el.schemeBlock.hidden = isJp();
+
     el.modes.innerHTML = '';
     MODES.forEach(function (m) {
       var b = document.createElement('button');
@@ -64,13 +100,116 @@
     Array.prototype.forEach.call(el.counts.children, function (b) {
       b.setAttribute('aria-pressed', String(Number(b.dataset.count) === state.count));
     });
-    el.countNote.textContent = state.count === 9
-      ? '九张 = 封面 + ' + (state.mode === 'A' ? '八页' : '四跨页') + '：朋友圈九图正好。'
-      : '十一张 = 封面 + ' + (state.mode === 'A' ? '十页' : '五跨页') + '：小红书可以发十张以上。';
+    el.countNote.textContent = isJp()
+      ? (state.count === 9 ? '九张 = 封面 + 八页（其中一个跨页占两页），整本一条叙事。'
+                           : '十一张 = 封面 + 十页（含两个跨页），叙事更完整。')
+      : state.count === 9
+        ? '九张 = 封面 + ' + (state.mode === 'A' ? '八页' : '四跨页') + '：朋友圈九图正好。'
+        : '十一张 = 封面 + ' + (state.mode === 'A' ? '十页' : '五跨页') + '：小红书可以发十张以上。';
   }
 
   var LS_PHOTOS = 'memento.photos.v1';
   var LS_STARS = 'memento.stars.v1';
+  var LS_TEXT = 'memento.text.v1';
+  var LS_DIR = 'memento.dir.v1';
+  function saveDir() { try { localStorage.setItem(LS_DIR, state.direction); } catch (e) {} }
+  function loadSavedDir() {
+    try {
+      var d = localStorage.getItem(LS_DIR);
+      if (d === 'jp' || d === 'zine') state.direction = d;
+    } catch (e) {}
+  }
+
+  /* every direction keeps its own words; edits are data, so they survive a
+     direction switch and a reload */
+  function textFor(dir) {
+    if (!state.texts[dir]) {
+      var d = M.TEXT_DEFAULT[dir] || M.TEXT_DEFAULT.zine;
+      state.texts[dir] = { title: d.title, year: d.year, sections: d.sections.slice(), lines: d.lines.slice() };
+    }
+    return state.texts[dir];
+  }
+  function saveText() {
+    try { localStorage.setItem(LS_TEXT, JSON.stringify(state.texts)); } catch (e) { /* 配额满了就算了 */ }
+  }
+  function loadSavedText() {
+    try {
+      var raw = localStorage.getItem(LS_TEXT);
+      var obj = raw ? JSON.parse(raw) : null;
+      if (!obj || typeof obj !== 'object') return;
+      Object.keys(obj).forEach(function (k) {
+        var t = obj[k];
+        if (!t || typeof t !== 'object') return;
+        state.texts[k] = {
+          title: String(t.title || ''),
+          year: Number(t.year) || new Date().getFullYear(),
+          sections: Array.isArray(t.sections) && t.sections.length ? t.sections.slice() : null,
+          lines: Array.isArray(t.lines) && t.lines.length ? t.lines.slice() : null
+        };
+        if (!state.texts[k].sections || !state.texts[k].lines) {
+          var d = M.TEXT_DEFAULT[k] || M.TEXT_DEFAULT.zine;
+          state.texts[k].sections = state.texts[k].sections || d.sections.slice();
+          state.texts[k].lines = state.texts[k].lines || d.lines.slice();
+        }
+      });
+    } catch (e) { /* 坏掉的存档不挡路 */ }
+  }
+
+  function openText() {
+    var t = textFor(state.direction);
+    el.textTitle.value = t.title;
+    el.textYear.value = t.year;
+    el.textSections.value = (t.sections || []).join('，');
+    el.textLines.value = (t.lines || []).join('\n');
+    el.textNote.textContent = isJp()
+      ? '日式小书的语气是安静的：短句，少形容词，不解释。改完立刻重排。'
+      : '杂志 Zine 的语气是冷静的旁白。改完立刻重排。';
+    el.textPanel.hidden = false;
+    el.textTitle.focus();
+  }
+  function closeText() { el.textPanel.hidden = true; }
+
+  function adoptText() {
+    var t = textFor(state.direction);
+    var title = el.textTitle.value.trim() || '未命名的一卷';
+    var year = parseInt(el.textYear.value, 10) || new Date().getFullYear();
+    var sections = el.textSections.value.replace(/[，；;]/g, ',').split(',')
+      .map(function (s) { return s.trim(); }).filter(Boolean);
+    var lines = el.textLines.value.split(String.fromCharCode(10))
+      .map(function (s) { return s.trim(); }).filter(Boolean);
+    t.title = title; t.year = year;
+    if (sections.length) t.sections = sections;
+    if (lines.length) t.lines = lines;
+    state.title = title; state.year = year;
+    el.title.value = title;
+    saveText();
+    rebuild();
+  }
+
+  var textTimer;
+  function onTextInput() {
+    clearTimeout(textTimer);
+    textTimer = setTimeout(adoptText, 280);
+  }
+  [el.textTitle, el.textYear, el.textSections, el.textLines].forEach(function (node) {
+    if (node) node.addEventListener('input', onTextInput);
+  });
+  if (el.btnText) el.btnText.onclick = openText;
+  if (el.textDone) el.textDone.onclick = function () { adoptText(); closeText(); };
+  if (el.textClose) el.textClose.onclick = closeText;
+  if (el.textReset) {
+    el.textReset.onclick = function () {
+      delete state.texts[state.direction];
+      textFor(state.direction);
+      saveText();
+      openText();
+      rebuild();
+    };
+  }
+  if (el.textPanel) {
+    el.textPanel.addEventListener('click', function (e) { if (e.target === el.textPanel) closeText(); });
+  }
+
   function saveStars() {
     try {
       localStorage.setItem(LS_STARS, JSON.stringify(state.photos.filter(function (x) { return x.starred; }).map(function (x) { return x.name || ''; })));
@@ -203,9 +342,9 @@
     });
 
     state.zine = M.composeBook(state.photos, {
-      title: state.title || '未命名的一卷', year: state.year,
       mode: state.mode, scheme: state.scheme, units: unitsWanted(),
-      seed: state.seed, coverPhoto: state.coverPhoto, preset: preset
+      seed: state.seed, coverPhoto: state.coverPhoto, preset: preset,
+      dir: state.direction, text: textFor(state.direction), pages: state.count - 1
     });
     paintZine();
   }
@@ -216,7 +355,8 @@
     el.zineList.innerHTML = '';
     var stageW = (el.zineList.clientWidth || 1000) - 56;   // leave room for the lock tools beside the pages
     var pair = z.pair;
-    var scale = Math.min((stageW - 6) / (pair ? 2 * z.pages[0].w : z.pages[0].w), 500 / z.pages[0].h);
+    var maxH = isJp() ? 620 : 500;
+    var scale = Math.min((stageW - 6) / (pair ? 2 * z.pages[0].w : z.pages[0].w), maxH / z.pages[0].h);
 
     function pageBtn(pg, pi, label) {
       var btn = document.createElement('button');
@@ -244,7 +384,8 @@
 
       var lab = document.createElement('span');
       lab.className = 'spread-label';
-      lab.textContent = pair
+      var two = pair && u.pages.length > 1;
+      lab.textContent = two
         ? pad2(u.startIndex + 1) + ' — ' + pad2(u.startIndex + 2) + ' · ' + (M.COMP[u.key] ? M.COMP[u.key].name : '')
         : pad2(u.startIndex + 1) + ' · ' + (M.COMP[u.key] ? M.COMP[u.key].name : '');
       row.appendChild(lab);
@@ -671,9 +812,11 @@
 
   var tTimer;
   el.title.oninput = function () {
-    state.title = el.title.value.trim() || '未命名的一卷';
+    var t = textFor(state.direction);
+    t.title = el.title.value.trim() || '未命名的一卷';
+    state.title = t.title;
     clearTimeout(tTimer);
-    tTimer = setTimeout(rebuild, 260);
+    tTimer = setTimeout(function () { saveText(); rebuild(); }, 260);
   };
 
   document.addEventListener('keydown', function (e) {
@@ -710,6 +853,13 @@
   buildRail();
   buildTray();
   rebuild();
+
+  loadSavedDir();
+  loadSavedText();
+  state.title = textFor(state.direction).title;
+  state.year = textFor(state.direction).year;
+  el.title.value = state.title;
+  buildRail();
 
   var saved = loadSavedPhotos();
   if (saved.length) {

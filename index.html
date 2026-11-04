@@ -16,6 +16,7 @@
   <input id="titleInput" class="title-input" value="十一月的海" aria-label="作品标题" spellcheck="false">
   <div class="bar-spacer"></div>
   <span id="statLine" class="stat">还没有照片</span>
+  <button id="btnText" class="btn btn-ghost">文字</button>
   <button id="btnImport" class="btn btn-ghost">导入照片</button>
   <button id="btnPDF" class="btn btn-ghost" disabled>导出 PDF</button>
   <button id="btnPNG" class="btn btn-primary" disabled>导出九张</button>
@@ -24,11 +25,17 @@
 <main class="shell">
   <aside class="rail">
     <section class="rail-block">
+      <h2 class="rail-title">设计方向</h2>
+      <div id="dirs" class="opt-list"></div>
+      <p id="dirNote" class="rail-note"></p>
+    </section>
+
+    <section class="rail-block" id="modeBlock">
       <h2 class="rail-title">排版模式</h2>
       <div id="modes" class="opt-list"></div>
     </section>
 
-    <section class="rail-block">
+    <section class="rail-block" id="schemeBlock">
       <h2 class="rail-title">方案</h2>
       <div id="schemes" class="opt-list opt-list--tight"></div>
     </section>
@@ -89,6 +96,30 @@
       <p class="crop-hint">左右上下拖动，选这一段显示。</p>
     </div>
     <div id="pickerGrid" class="picker-grid"></div>
+  </div>
+</div>
+
+<div id="textPanel" class="picker textpanel" hidden>
+  <div class="picker-card" role="dialog" aria-label="文字">
+    <div class="picker-head">
+      <div>
+        <h2 class="picker-title">文字</h2>
+        <p class="picker-note" id="textNote">书名、年份、章节词、每页短句都是你的。改完立刻重排。</p>
+      </div>
+      <button id="textClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="text-body">
+      <label class="text-row"><b>书名</b><input id="textTitle" type="text" spellcheck="false"></label>
+      <label class="text-row"><b>年份</b><input id="textYear" type="number" min="1900" max="2100" step="1"></label>
+      <label class="text-row"><b>章节词</b><input id="textSections" type="text" spellcheck="false" placeholder="用逗号分开：朝，窗，影"></label>
+      <label class="text-row text-row--block"><b>每页短句<span>一行一句，按顺序用在页面上</span></b>
+        <textarea id="textLines" rows="9" spellcheck="false"></textarea>
+      </label>
+    </div>
+    <div class="text-foot">
+      <button id="textReset" class="btn btn-ghost">恢复本方向的默认文字</button>
+      <button id="textDone" class="btn btn-primary">完成</button>
+    </div>
   </div>
 </div>
 

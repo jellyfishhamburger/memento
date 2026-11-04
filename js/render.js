@@ -29,8 +29,16 @@ window.MEM = window.MEM || {};
       var tokens = String(para).match(/[　-鿿＀-￯]|[^\s　-鿿＀-￯]+|\s+/g) || [''];
       var cur = '';
       tokens.forEach(function (tk) {
-        if (!cur || m(cur + tk) <= t.w) cur += tk;
-        else { out.push(cur.replace(/\s+$/, '')); cur = tk.trim() ? tk : ''; }
+        if (!cur || m(cur + tk) <= t.w) { cur += tk; return; }
+        // a closing mark never opens a line: carry it up instead of orphaning it
+        if (/^[，。、；：！？）」』】,.;:!?)]$/.test(tk)) {
+          cur += tk;
+          out.push(cur.replace(/\s+$/, ''));
+          cur = '';
+          return;
+        }
+        out.push(cur.replace(/\s+$/, ''));
+        cur = tk.trim() ? tk : '';
       });
       out.push(cur.replace(/\s+$/, ''));
     });

@@ -550,6 +550,332 @@ window.MEM = window.MEM || {};
     }
   };
 
+  /* ---------- Japanese Minimal · a quieter way to hold photographs ----------
+     Wide margins, small type, one idea per page. A page that only breathes is
+     part of the composition. Every page keeps the same skeleton — plate number
+     top right, caption block bottom left — so the variety lives in the pictures,
+     not in the furniture. */
+
+  var MGJ = 150;                       // outer margin, wide on purpose
+  var JP_BG = '#faf9f4';
+  var JP_INK = '#1b1915';
+  var JP_MUTED = '#8d8678';
+
+  /* break a title on character count so it can never run off the paper */
+  function jpLines(s, max) {
+    var t = String(s == null ? '' : s), out = [];
+    for (var i = 0; i < t.length; i += max) out.push(t.slice(i, i + max));
+    return out.join('\n');
+  }
+  /* hand-wrap Chinese: break after a punctuation mark when one is near the edge,
+     otherwise at the edge. A raw character count cuts phrases in half. */
+  function jpWrap(s, max) {
+    var t = String(s == null ? '' : s), out = [];
+    var CLOSE = '。，、；：！？）」』】,.;:!?)';
+    while (t.length > max) {
+      var cut = -1;
+      for (var i = Math.min(max, t.length - 1); i >= Math.max(3, max - 8); i--) {
+        if (CLOSE.indexOf(t.charAt(i)) >= 0) { cut = i + 1; break; }
+      }
+      if (cut < 0) {
+        cut = max;
+        // a line must not open with a closing mark: carry it up one place
+        while (cut < t.length && CLOSE.indexOf(t.charAt(cut)) >= 0) cut++;
+      }
+      out.push(t.slice(0, cut));
+      t = t.slice(cut);
+    }
+    if (t && out.length && CLOSE.indexOf(t.charAt(0)) >= 0) out[out.length - 1] += t;
+    else if (t) out.push(t);
+    return out.join(String.fromCharCode(10));
+  }
+  /* how many characters fit in w at this size */
+  function jpFit(s, w, size) { return jpWrap(s, Math.max(4, Math.floor(w / (size * 1.04)))); }
+
+  function jpTxt(o) {
+    o.family = o.family || SANS;
+    o.color = o.color || JP_INK;
+    return txt(o);
+  }
+  function jpPlate(pg, o, y) {
+    pg.texts.push(jpTxt({
+      x: PW - MGJ - 150, y: y == null ? 150 : y, w: 150, size: 10, track: 3,
+      color: JP_MUTED, align: 'right', text: o.plate
+    }));
+  }
+  function jpCaption(pg, o, y, w) {
+    if (!o.line) return;
+    pg.texts.push(jpTxt({
+      x: MGJ, y: y == null ? PH - MGJ - 84 : y, w: w || 430, size: 12,
+      color: PAPER.ink2, lineHeight: 2.15, text: o.line
+    }));
+  }
+
+  COMP['jp-cover'] = {
+    name: '封面', mode: 'jp', dir: 'jp', n: 1, page: 1,
+    build: function (photos, o) {
+      var pg = page(JP_BG), p = photos[0];
+      if (!p) return [pg];
+      var w = 460, h = Math.min(w / (p.ar || 1), 620);
+      pg.frames.push({
+        photo: p, x: PW - MGJ - w, y: PH - MGJ - h, w: w, h: h, pad: 0, role: 'hero',
+        crop: M.cropFor(p, w, h), z: 1
+      });
+      pg.texts.push(jpTxt({ x: MGJ, y: 252, w: 520, size: 10, track: 7, color: JP_MUTED, text: 'A SMALL BOOK' }));
+      pg.texts.push(jpTxt({ x: MGJ, y: 306, w: 640, size: 36, family: SERIF, lineHeight: 1.6, text: jpFit(o.title, 640, 36) }));
+      if (o.meta) pg.texts.push(jpTxt({ x: MGJ, y: 640, w: 360, size: 11, color: PAPER.ink2, lineHeight: 2.4, text: o.meta }));
+      pg.texts.push(jpTxt({ x: MGJ, y: PH - MGJ - 10, w: 300, size: 10, track: 4, color: JP_MUTED, text: String(o.year) }));
+      return [pg];
+    }
+  };
+
+  /* the opening: one small print high on the paper, a section word set large,
+     and nothing else. The book starts by leaving room. */
+  COMP['jp-open'] = {
+    name: '开场', mode: 'jp', dir: 'jp', n: 1, page: 1,
+    build: function (photos, o) {
+      var pg = page(JP_BG), p = photos[0];
+      if (p) {
+        var w = 380, h = Math.min(w / (p.ar || 1), 500);
+        pg.frames.push({ photo: p, x: PW - MGJ - w, y: 392, w: w, h: h, pad: 0, role: 'hero', crop: M.cropFor(p, w, h), z: 1 });
+      }
+      pg.texts.push(jpTxt({ x: MGJ, y: 300, w: 340, size: 10, track: 5, color: JP_MUTED, text: o.plate + '   ' + o.title }));
+      pg.texts.push(jpTxt({ x: MGJ, y: 900, w: 640, size: 108, family: SERIF, lineHeight: 1.35, text: jpFit(o.head || o.title, 640, 108) }));
+      jpCaption(pg, o, PH - MGJ - 84);
+      return [pg];
+    }
+  };
+
+  /* one photograph, held. The print sits on the left margin; the caption closes
+     the page at the foot, so the white above it has a job. */
+  COMP['jp-solo'] = {
+    name: '单页主图', mode: 'jp', dir: 'jp', n: 1, page: 1,
+    build: function (photos, o) {
+      var pg = page(JP_BG), p = photos[0];
+      var w = photos[1] ? 520 : 700;
+      if (p) {
+        var h = Math.min(w / (p.ar || 1), 880);
+        pg.frames.push({ photo: p, x: MGJ, y: 190, w: w, h: h, pad: 0, role: 'hero', crop: M.cropFor(p, w, h), z: 1 });
+        if (photos[1]) {
+          var p2 = photos[1], w2 = 240, h2 = Math.min(w2 / (p2.ar || 1), 330);
+          pg.frames.push({
+            photo: p2, x: PW - MGJ - w2, y: 190, w: w2, h: h2, pad: 0, role: 'detail',
+            crop: M.cropFor(p2, w2, h2), z: 1
+          });
+        }
+        jpPlate(pg, o, 150);
+        jpCaption(pg, o);
+      }
+      return [pg];
+    }
+  };
+
+  /* a large print low, small ones high: a pair that talks, not two equal cells */
+  COMP['jp-pair'] = {
+    name: '一大一小', mode: 'jp', dir: 'jp', n: 2, page: 1,
+    build: function (photos, o) {
+      var pg = page(JP_BG), p = photos[0];
+      if (p) {
+        var w = 620, h = Math.min(w / (p.ar || 1), 640);
+        pg.frames.push({ photo: p, x: MGJ, y: 520, w: w, h: h, pad: 0, role: 'hero', crop: M.cropFor(p, w, h), z: 1 });
+      }
+      var smalls = [photos[1], photos[2]], spots = [
+        { x: PW - MGJ - 240 },             // top right
+        { x: MGJ }                         // top left
+      ];
+      var hs = smalls.map(function (p2) { return p2 ? Math.max(170, Math.min(290, 240 / (p2.ar || 1))) : 0; });
+      var hMax = Math.max(hs[0] || 0, hs[1] || 0);
+      smalls.forEach(function (p2, k) {
+        if (!p2) return;
+        // the two small prints stand on one line, flush left and right
+        pg.frames.push({
+          photo: p2, x: spots[k].x, y: 170 + (hMax - hs[k]), w: 240, h: hs[k], pad: 0, role: 'detail',
+          crop: M.cropFor(p2, 240, hs[k]), z: 1
+        });
+      });
+      jpPlate(pg, o, 150);
+      jpCaption(pg, o, PH - MGJ - 86);
+      return [pg];
+    }
+  };
+
+  /* three small prints down the right edge; the left column is text and air */
+  COMP['jp-triple'] = {
+    name: '小图序列', mode: 'jp', dir: 'jp', n: 3, page: 1,
+    build: function (photos, o) {
+      var pg = page(JP_BG);
+      pg.texts.push(jpTxt({ x: MGJ, y: 300, w: 300, size: 10, track: 4, color: JP_MUTED, text: o.plate }));
+      var W = 250, rightX = PW - MGJ - W, leftX = rightX - W - 40;
+      /* one width for every print, height inside a band: the column reads as a system */
+      function small(p, x, y) {
+        var h = Math.max(200, Math.min(300, W / (p.ar || 1)));
+        pg.frames.push({ photo: p, x: x, y: y, w: W, h: h, pad: 0, role: 'detail', crop: M.cropFor(p, W, h), z: 1 });
+        return h;
+      }
+      var list = photos.slice(0, 5);
+      if (list.length <= 3) {
+        var y = 190;
+        list.forEach(function (p) { y += small(p, rightX, y) + 40; });
+      } else {
+        // two columns of two; each pair stands on one baseline so the block reads as a block
+        function row(a, b, top) {
+          var ha = Math.max(200, Math.min(300, W / (a.ar || 1)));
+          var hb = b ? Math.max(200, Math.min(300, W / (b.ar || 1))) : ha;
+          var hMax = Math.max(ha, hb);
+          pg.frames.push({ photo: a, x: leftX, y: top + (hMax - ha), w: W, h: ha, pad: 0, role: 'detail', crop: M.cropFor(a, W, ha), z: 1 });
+          if (b) pg.frames.push({ photo: b, x: rightX, y: top + (hMax - hb), w: W, h: hb, pad: 0, role: 'detail', crop: M.cropFor(b, W, hb), z: 1 });
+          return hMax;
+        }
+        var h1 = row(list[0], list[1], 190);
+        var next = 190 + h1 + 44;
+        if (list[2]) {
+          var h2 = row(list[2], list[3], next);
+          if (list[4]) row(list[4], null, next + h2 + 44);
+        }
+      }
+      pg.texts.push(jpTxt({ x: MGJ, y: PH - MGJ - 190, w: 380, size: 30, family: SERIF, lineHeight: 1.7, text: jpFit(o.head || o.title, 380, 30) }));
+      jpCaption(pg, o, PH - MGJ - 86, 380);
+      return [pg];
+    }
+  };
+
+  /* the climax: one photograph across the fold, with the margin still respected */
+  COMP['jp-fold'] = {
+    name: '跨页', mode: 'jp', dir: 'jp', n: 1, page: 2,
+    build: function (photos, o) {
+      var a = page(JP_BG), b = page(JP_BG);
+      var p = photos[0];
+      if (!p) return [a, b];
+      var w = PW * 2 - MGJ * 2, h = Math.min(w / (p.ar || 1), PH - MGJ * 2 - 40);
+      var y = Math.round((PH - h) / 2) + 20;
+      crossPage(a, b, p, MGJ, w, y, h, 'fold');
+      a.texts.push(jpTxt({ x: MGJ, y: 110, w: 300, size: 10, track: 4, color: JP_MUTED, text: o.plate + '   ' + o.title }));
+      // one photograph and nothing else: the climax is not a collage, and it
+      // keeps its margin. No caption here — the picture is the sentence.
+      return [a, b];
+    }
+  };
+
+  /* a spread as a sequence: one large print on the left, a column of three
+     small ones on the right, so the eye walks instead of scanning a grid */
+  COMP['jp-sequence'] = {
+    name: '序列', mode: 'jp', dir: 'jp', n: 4, page: 2,
+    build: function (photos, o) {
+      var a = page(JP_BG), b = page(JP_BG);
+      var p = photos[0];
+      if (p) {
+        var w = 560, h = Math.min(w / (p.ar || 1), 760);
+        a.frames.push({ photo: p, x: MGJ, y: 220, w: w, h: h, pad: 0, role: 'hero', crop: M.cropFor(p, w, h), z: 1 });
+      }
+      var y = 180;
+      photos.slice(1, 4).forEach(function (p2) {
+        var w2 = 250, h2 = Math.min(w2 / (p2.ar || 1), 340);
+        b.frames.push({ photo: p2, x: MGJ, y: y, w: w2, h: h2, pad: 0, role: 'detail', crop: M.cropFor(p2, w2, h2), z: 1 });
+        y += h2 + 44;
+      });
+      a.texts.push(jpTxt({ x: MGJ, y: 110, w: 300, size: 10, track: 4, color: JP_MUTED, text: o.plate }));
+      jpCaption(a, o, PH - MGJ - 120, 380);
+      if (photos[4]) {
+        var p5 = photos[4], w5 = 210, h5 = Math.min(w5 / (p5.ar || 1), 280);
+        b.frames.push({ photo: p5, x: PW - MGJ - w5, y: PH - MGJ - h5, w: w5, h: h5, pad: 0, role: 'detail', crop: M.cropFor(p5, w5, h5), z: 1 });
+      }
+      return [a, b];
+    }
+  };
+
+  /* the pause: one very small print, one line, and the rest is paper */
+  COMP['jp-quiet'] = {
+    name: '停顿', mode: 'jp', dir: 'jp', n: 1, page: 1,
+    build: function (photos, o) {
+      var pg = page(JP_BG), p = photos[0];
+      pg.texts.push(jpTxt({ x: MGJ, y: 300, w: 200, size: 10, track: 4, color: JP_MUTED, text: o.plate }));
+      var y = 470;
+      [photos[0], photos[1]].forEach(function (pp) {
+        if (!pp) return;
+        var w = 220, h = Math.min(w / (pp.ar || 1), 300);
+        pg.frames.push({ photo: pp, x: PW - MGJ - w, y: y, w: w, h: h, pad: 0, role: 'detail', crop: M.cropFor(pp, w, h), z: 1 });
+        y += h + 40;
+      });
+      // the line closes the page at the foot, like every other page in the book
+      pg.texts.push(jpTxt({ x: MGJ, y: PH - MGJ - 92, w: 440, size: 26, family: SERIF, lineHeight: 1.85, text: jpFit(o.line || o.head, 440, 26) }));
+      return [pg];
+    }
+  };
+
+  /* the end: the last small print, one sentence, the year */
+  COMP['jp-end'] = {
+    name: '收尾', mode: 'jp', dir: 'jp', n: 1, page: 1,
+    build: function (photos, o) {
+      var pg = page(JP_BG), p = photos[0];
+      var x = MGJ, base = 180;
+      var h0 = p ? Math.min(300 / (p.ar || 1), 380) : 0;
+      [photos[0], photos[1]].forEach(function (pp, k) {
+        if (!pp) return;
+        var w = k === 0 ? 300 : 220, h = Math.min(w / (pp.ar || 1), 380);
+        // both prints stand on one baseline: different heights, one bottom line
+        pg.frames.push({ photo: pp, x: x, y: base + (h0 - h), w: w, h: h, pad: 0, role: 'detail', crop: M.cropFor(pp, w, h), z: 1 });
+        x += w + 44;
+      });
+      pg.texts.push(jpTxt({ x: MGJ, y: PH - MGJ - 210, w: 620, size: 26, family: SERIF, lineHeight: 1.85, text: jpFit(o.line || o.head, 620, 26) }));
+      pg.texts.push(jpTxt({ x: PW - MGJ - 400, y: PH - MGJ - 10, w: 400, size: 10, track: 5, color: JP_MUTED, align: 'right', text: 'THE END   ·   ' + o.year }));
+      return [pg];
+    }
+  };
+
+  /* how many photographs each jp page can hold — min keeps a page alive,
+     max is where it stops being quiet */
+  var JP_SPEC = {
+    'jp-open': { min: 1, max: 1 },
+    'jp-solo': { min: 1, max: 2 },
+    'jp-pair': { min: 2, max: 3 },
+    'jp-triple': { min: 3, max: 5 },
+    'jp-fold': { min: 1, max: 1 },
+    'jp-sequence': { min: 4, max: 5 },
+    'jp-quiet': { min: 1, max: 2 },
+    'jp-end': { min: 1, max: 2 }
+  };
+
+  /* the book as a sentence: opening, development, climax, close. Pages = 8 or 10
+     so the export still lands on nine / eleven images. */
+  function jpPlan(n, pageBudget) {
+    var keys = pageBudget >= 10
+      ? ['jp-open', 'jp-solo', 'jp-pair', 'jp-triple', 'jp-fold', 'jp-sequence', 'jp-quiet', 'jp-end']
+      : ['jp-open', 'jp-solo', 'jp-pair', 'jp-triple', 'jp-fold', 'jp-quiet', 'jp-end'];
+    var want = keys.map(function (k) { return JP_SPEC[k].min; });
+    var sum = want.reduce(function (a, b) { return a + b; }, 0);
+    var grow = ['jp-triple', 'jp-pair', 'jp-solo', 'jp-fold', 'jp-sequence', 'jp-quiet', 'jp-end'];
+
+    // too few photographs: give pages back (a thin book, not a padded one)
+    var drop = ['jp-sequence', 'jp-triple', 'jp-pair', 'jp-solo', 'jp-quiet'];
+    while (sum > n) {
+      var cut = false;
+      for (var d = 0; d < drop.length && sum > n; d++) {
+        var j = keys.indexOf(drop[d]);
+        if (j < 0) continue;
+        var can = Math.min(want[j], sum - n);
+        if (can > 0) { want[j] -= can; sum -= can; cut = true; }
+        if (want[j] <= 0) { keys.splice(j, 1); want.splice(j, 1); }
+      }
+      if (!cut) break;
+    }
+
+    // too many: fill the dense pages, then let the book grow a page
+    var guard = 0;
+    while (sum < n && guard++ < 40) {
+      var moved = false;
+      for (var g = 0; g < grow.length && sum < n; g++) {
+        var i = keys.indexOf(grow[g]);
+        if (i >= 0 && want[i] < JP_SPEC[grow[g]].max) { want[i]++; sum++; moved = true; }
+      }
+      if (!moved) {
+        var at = Math.max(1, keys.length - 1);
+        var add = Math.min(3, n - sum);
+        keys.splice(at, 0, 'jp-pair'); want.splice(at, 0, add); sum += add;
+      }
+    }
+    return { keys: keys, want: want };
+  }
+
   /* ---------- sequencing ---------- */
 
   var SCHEMES = {
@@ -581,8 +907,11 @@ window.MEM = window.MEM || {};
   /* ---------------- assignment: who goes where ---------------- */
   function arFit(p, ar) { return Math.abs(Math.log((p.ar || 1) / ar)); }
   function hue(p) {
-    var c = (p.colors && p.colors[0]) || '#888';
+    var c = (p.colors && p.colors[0]) || '#888888';
+    if (typeof c !== 'string') c = '#888888';
+    if (c.length === 4) c = '#' + c.charAt(1) + c.charAt(1) + c.charAt(2) + c.charAt(2) + c.charAt(3) + c.charAt(3);
     var r = parseInt(c.slice(1, 3), 16) / 255, g = parseInt(c.slice(3, 5), 16) / 255, b = parseInt(c.slice(5, 7), 16) / 255;
+    if (!isFinite(r) || !isFinite(g) || !isFinite(b)) return 0;
     var mx = Math.max(r, g, b), mn = Math.min(r, g, b), h = 0;
     if (mx !== mn) {
       if (mx === r) h = ((g - b) / (mx - mn) + (g < b ? 6 : 0)) / 6;
@@ -591,7 +920,7 @@ window.MEM = window.MEM || {};
     }
     return h * 360;
   }
-  function hueGap(a, b) { var d = Math.abs(hue(a) - hue(b)); return Math.min(d, 360 - d); }
+  function hueGap(a, b) { var d = Math.abs(hue(a) - hue(b)); if (!isFinite(d)) return 180; return Math.min(d, 360 - d); }
 
   /* ---------------- build one composition ---------------- */
   function buildOne(key, photos, ctx) {
@@ -622,7 +951,17 @@ window.MEM = window.MEM || {};
     'z-end': [],
     'z-wall': [],
     'z-wall-air': [],
-    'ed-dense': []
+    'ed-dense': [],
+    // Japanese Minimal: the main print of each page is the 大位, small columns are not
+    'jp-cover': ['hero'],
+    'jp-open': ['hero'],
+    'jp-solo': ['hero', 'detail'],
+    'jp-pair': ['hero', 'detail', 'detail'],
+    'jp-triple': ['detail', 'detail', 'detail', 'detail', 'detail'],
+    'jp-fold': ['fold', 'detail'],
+    'jp-sequence': ['hero', 'detail', 'detail', 'detail', 'detail'],
+    'jp-quiet': ['detail'],
+    'jp-end': ['detail']
   };
 
   /* 大位 = a frame the layout itself calls a hero, or one that runs across the fold */
@@ -658,9 +997,43 @@ window.MEM = window.MEM || {};
   }
 
   /* ---------------- the book ---------------- */
+  var SECTIONS = ['细节', '途中', '风', '光', '岸', '灰'];
+  var LINES = [
+    '海是灰的，风把光吹散，一天就这样过去了。',
+    '没有目的地的一次散步，走得比想的远。',
+    '十一月的风里，所有颜色都退成米色。',
+    '记住那天下午的湿度。',
+    '一路向北，直到看不见岸。'
+  ];
+
+  M.__jp = { plan: jpPlan, spec: JP_SPEC };
+
   M.COMP = COMP;
   M.SCHEMES = SCHEMES;
   M.SCHEME_NAME = SCHEME_NAME;
+
+  /* every direction brings its own voice. These are starting points, not limits:
+     the app hands whatever the user typed back in through opt.text. */
+  M.TEXT_DEFAULT = {
+    zine: {
+      title: '十一月的海', year: new Date().getFullYear(),
+      sections: SECTIONS.slice(), lines: LINES.slice()
+    },
+    jp: {
+      title: '午后的光', year: new Date().getFullYear(),
+      sections: ['朝', '窗', '影', '水', '归', '夜'],
+      lines: [
+        '光落在纸上，像一次很轻的呼吸。',
+        '风从窗缝进来，把下午吹薄了一点。',
+        '我没有拍下声音，只拍下安静。',
+        '这里空着，是留给你的。',
+        '影子比实物慢半步。',
+        '一天里最好的那几分钟，通常没有人。',
+        '水声退下去之后，才听见远处。',
+        '后来我把这几页翻了很多次。'
+      ]
+    }
+  };
 
   /* the beat of the book: dense, then a page that breathes, never the same twice */
   function rhythm(mode, n) {
@@ -751,12 +1124,21 @@ window.MEM = window.MEM || {};
   M.composeBook = function (photos, opt) {
     opt = opt || {};
     var mode = opt.mode || 'A';
+    var dir = opt.dir || 'zine';
+    var jp = dir === 'jp';
     var scheme = SCHEMES[mode][opt.scheme || 0] || SCHEMES[mode][0];
     var list = photos.filter(function (p) { return p && p.img; });
-    if (!list.length) return { pages: [], units: [], mode: mode };
+    if (!list.length) return { pages: [], units: [], mode: mode, dir: dir };
+
+    // text is data: the caller may hand in its own title, year, section words and lines
+    var TX = opt.text || {};
+    var lines = (TX.lines && TX.lines.length) ? TX.lines : LINES;
+    var sections = (TX.sections && TX.sections.length) ? TX.sections : SECTIONS;
 
     var ctx = {
-      title: opt.title || '未命名的一卷', year: opt.year, total: list.length,
+      title: TX.title || opt.title || '未命名的一卷',
+      year: TX.year || opt.year || new Date().getFullYear(),
+      total: list.length, lines: lines,
       line: opt.line || '', meta: opt.meta || '', plate: '01'
     };
 
@@ -766,18 +1148,31 @@ window.MEM = window.MEM || {};
     var coverPhoto = opt.coverPhoto || starred[0] || ranked[0];
 
     // 2. sequence the inner units
-    var units = scheme.slice();
-    var wantUnits = opt.units || units.length;
-    while (units.length < wantUnits) units.push(scheme[units.length % scheme.length]);
-    units = units.slice(0, wantUnits);
-    if (opt.units_override) units = opt.units_override;
-    var pages = [lay(page(), COMP.cover.ops, [coverPhoto], ctx)];
+    var units, want, pages;
+    if (jp) {
+      var coverKey = 'jp-cover';
+      pages = [COMP[coverKey].build([coverPhoto], ctx)[0]];
+      var plan = jpPlan(list.length - 1, opt.pages || 8);
+      units = plan.keys;
+      want = plan.want;
+    } else {
+      units = scheme.slice();
+      var wantUnits = opt.units || units.length;
+      while (units.length < wantUnits) units.push(scheme[units.length % scheme.length]);
+      units = units.slice(0, wantUnits);
+      if (opt.units_override) units = opt.units_override;
+      pages = [lay(page(), COMP.cover.ops, [coverPhoto], ctx)];
+    }
 
     // 3. pick a composition for each position, by how many photos it must hold
     var rest = list.filter(function (p) { return p !== coverPhoto; });
-    var chosen = pickComps(mode, units, rest.length);
-    units = chosen.keys;
-    var want = chosen.want;
+    if (jp) {
+      // the japanese book has a fixed sentence: the plan already holds every photo
+    } else {
+      var chosen = pickComps(mode, units, rest.length);
+      units = chosen.keys;
+      want = chosen.want;
+    }
 
     // 4. assign: 大位 first, and a ★ is only spent there
     var pool = rest.slice();
@@ -844,8 +1239,8 @@ window.MEM = window.MEM || {};
       var ph = u.photos.filter(Boolean);
       if (!ph.length && pool.length) ph.push(pool.shift());
       ctx.plate = ('0' + (i + 1)).slice(-2);
-      ctx.line = lineFor(opt, i);
-      ctx.head = i === 0 ? ctx.title : SECTIONS[i % SECTIONS.length];
+      ctx.line = lineFor({ lines: lines }, i);
+      ctx.head = (jp || i > 0) ? sections[i % sections.length] : ctx.title;
       var built = buildOne(u.key, ph, ctx);
       unitPages.push({ key: u.key, pages: built, startIndex: out.length });
       built.forEach(function (p) { out.push(p); });
@@ -857,7 +1252,7 @@ window.MEM = window.MEM || {};
         var u = unitPages[pr.i];
         if (!u || !pr.photos || !pr.photos.length) return;
         ctx.plate = ('0' + (pr.i + 1)).slice(-2);
-        ctx.line = lineFor(ctx, pr.i);
+        ctx.line = lineFor({ lines: lines }, pr.i);
         var built = buildOne(pr.key, pr.photos, ctx);
         for (var k = 0; k < built.length && k < u.pages.length; k++) out[u.startIndex + k] = built[k];
         u.key = pr.key;
@@ -898,20 +1293,13 @@ window.MEM = window.MEM || {};
 
     return {
       pages: out, units: unitPages, mode: mode, scheme: opt.scheme || 0,
-      cover: coverPhoto, total: list.length, pair: mode !== 'A'
+      cover: coverPhoto, total: list.length, pair: jp ? true : mode !== 'A', dir: dir
     };
   };
 
-  var SECTIONS = ['细节', '途中', '风', '光', '岸', '灰'];
-  var LINES = [
-    '海是灰的，风把光吹散，一天就这样过去了。',
-    '没有目的地的一次散步，走得比想的远。',
-    '十一月的风里，所有颜色都退成米色。',
-    '记住那天下午的湿度。',
-    '一路向北，直到看不见岸。'
-  ];
   function lineFor(opt, i) {
     if (opt && opt.line) return opt.line;
-    return LINES[i % LINES.length];
+    var arr = (opt && opt.lines && opt.lines.length) ? opt.lines : LINES;
+    return arr[i % arr.length];
   }
 })(window.MEM);
