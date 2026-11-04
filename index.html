@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MEMENTO — 让照片变成一卷书</title>
+<title>MEMENTO — 让照片变成一本作品集</title>
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -17,57 +17,29 @@
   <div class="bar-spacer"></div>
   <span id="statLine" class="stat">还没有照片</span>
   <button id="btnImport" class="btn btn-ghost">导入照片</button>
-  <button id="btnTall" class="btn btn-ghost" disabled>导出长图</button>
-  <button id="btnPNG" class="btn btn-ghost" disabled>导出图片</button>
-  <button id="btnPDF" class="btn btn-primary" disabled>导出 PDF</button>
+  <button id="btnPDF" class="btn btn-ghost" disabled>导出 PDF</button>
+  <button id="btnPNG" class="btn btn-primary" disabled>导出九张</button>
 </header>
 
 <main class="shell">
   <aside class="rail">
     <section class="rail-block">
-      <div class="seg" id="modes" role="group" aria-label="模式">
-        <button type="button" data-mode="book" aria-pressed="true">作品集</button>
-        <button type="button" data-mode="zine" aria-pressed="false">小书</button>
-        <button type="button" data-mode="grid" aria-pressed="false">九宫格</button>
+      <h2 class="rail-title">版式</h2>
+      <div id="themes" class="opt-list"></div>
+    </section>
+
+    <section class="rail-block">
+      <h2 class="rail-title">张数</h2>
+      <div id="counts" class="seg" role="group" aria-label="张数">
+        <button type="button" data-spreads="4">九张</button>
+        <button type="button" data-spreads="5">十一张</button>
       </div>
-    </section>
-
-    <section class="rail-block" id="blockStyles">
-      <h2 class="rail-title">风格</h2>
-      <div id="styles" class="opt-list"></div>
-    </section>
-
-    <section class="rail-block" id="blockGrid">
-      <h2 class="rail-title">九张版式</h2>
-      <div class="seg" id="fills" role="group" aria-label="每格放几张">
-        <button type="button" data-fill="single">每格一张</button>
-        <button type="button" data-fill="mosaic">每格多张</button>
-      </div>
-      <div id="layouts" class="opt-list"></div>
-    </section>
-
-    <section class="rail-block" id="blockPlan">
-      <h2 class="rail-title">编排方案</h2>
-      <div id="plans" class="opt-list opt-list--tight"></div>
-    </section>
-
-    <section class="rail-block" id="blockFormat">
-      <h2 class="rail-title">页幅</h2>
-      <div id="formats" class="seg" role="group"></div>
-    </section>
-
-    <section class="rail-block" id="blockPages">
-      <h2 class="rail-title">页数</h2>
-      <div id="pageTargets" class="seg" role="group" aria-label="页数">
-        <button type="button" data-pages="0">自动</button>
-        <button type="button" data-pages="9">九页</button>
-      </div>
-      <p class="rail-note" id="pageNote" hidden>九页 = 一张封面 + 八个跨页，导出发朋友圈就是九张方图。</p>
+      <p id="countNote" class="rail-note">九张 = 封面 + 四个跨页：朋友圈九图正好。</p>
     </section>
 
     <section class="rail-block">
       <h2 class="rail-title">照片</h2>
-      <p class="rail-note">点一张可以把它从这一版里拿掉。</p>
+      <p class="rail-note">点一张删掉（可撤销）。删到二十五张左右，留白多的版式才用得上。</p>
       <div id="tray" class="tray"></div>
     </section>
 
@@ -78,36 +50,22 @@
 
   <section class="stage">
     <div id="empty" class="empty">
-      <p class="empty-kicker">先给四十张照片，它替你挑不出错的那几页</p>
+      <p class="empty-kicker">四十张照片，一本小书</p>
       <h1 class="empty-title">把照片扔进来</h1>
-      <p class="empty-sub">本地处理，不上传。选好之后自动排出跨页、留白、图版编号与取色条。</p>
+      <p class="empty-sub">本地处理，不上传。每张按原画幅落位，两页一组排成跨页；横图会跨过中缝，滑过去连成一整张。</p>
       <div class="empty-actions">
         <button class="btn btn-primary" id="btnPick">选择照片</button>
         <button class="btn btn-ghost" id="btnDemo">先用示例照片看看</button>
       </div>
     </div>
-    <div id="pages" class="pages" hidden></div>
-    <p id="stageHint" class="stage-hint" hidden>点页面里的照片：换图 / 删图　·　点页面空白：放大看</p>
+
     <div id="zinePanel" class="zine-panel" hidden>
       <div class="zine-head">
-        <h1 class="grid-title">小书</h1>
+        <h1 class="grid-title">作品集</h1>
         <p id="zineNote" class="grid-note"></p>
       </div>
       <div id="zineList" class="zine-list"></div>
-    </div>
-    <div id="gridPanel" class="grid-panel" hidden>
-      <div class="grid-head">
-        <h1 class="grid-title">九宫格</h1>
-        <p id="gridNote" class="grid-note"></p>
-      </div>
-      <div class="grid-body">
-        <div id="gridWrap" class="grid9"></div>
-        <div class="grid-side">
-          <h2 class="rail-title">选中的九张</h2>
-          <div id="gridStrip" class="grid-strip"></div>
-          <p id="gridWhy" class="grid-why"></p>
-        </div>
-      </div>
+      <p class="stage-hint">点任意一张照片：换图 / 删图 / 拖动调整显示的部分。点页面空白处放大看。</p>
     </div>
   </section>
 </main>
@@ -120,6 +78,10 @@
         <p id="pickerNote" class="picker-note"></p>
       </div>
       <button id="pickerClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div id="pickerCrop" class="picker-crop" hidden>
+      <div id="cropBox" class="crop-box"></div>
+      <p class="crop-hint">左右上下拖动，选这一段显示。</p>
     </div>
     <div id="pickerGrid" class="picker-grid"></div>
   </div>
@@ -140,7 +102,6 @@
 
 <script src="js/analyze.js"></script>
 <script src="js/engine.js"></script>
-<script src="js/grid.js"></script>
 <script src="js/spread.js"></script>
 <script src="js/render.js"></script>
 <script src="js/export.js"></script>

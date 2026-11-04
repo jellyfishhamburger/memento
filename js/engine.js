@@ -242,11 +242,12 @@ window.MEM = window.MEM || {};
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
   /* ---------------- crop ---------------- */
-  function cropFor(photo, fw, fh) {
+  function cropFor(photo, fw, fh, focal) {
     var pw = photo.w, ph = photo.h, target = fw / fh;
     var sw, sh;
     if (pw / ph > target) { sh = ph; sw = ph * target; } else { sw = pw; sh = pw / target; }
-    var fx = photo.focal ? photo.focal.x : .5, fy = photo.focal ? photo.focal.y : .5;
+    var f = focal || photo.focal || { x: .5, y: .5 };
+    var fx = f.x, fy = f.y;
     // keep the focal point a little above the middle of the crop: a face needs air
     // above it, and centring on a focal point at the chest is how heads get cut
     var bias = (sh < ph - 0.5) ? 0.44 : 0.5;

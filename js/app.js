@@ -1,131 +1,63 @@
-/* App shell: state, import, rebuild, export. Two outputs: a book of pages, or a 3×3. */
+/* App shell — one thing: a 作品集. Portrait pages that pair into spreads.
+   Import, arrange, swap/crop/delete a photo, export nine images. */
 (function () {
   'use strict';
   var M = window.MEM;
 
   var state = {
-    photos: [], pages: [], grid: null, book: null, zine: null, repaint: null,
-    mode: 'book', style: 'editorial', plan: 'hero', format: 'portrait', layout: 'paper',
-    fill: 'mosaic', pageTarget: 0, excluded: {}, seed: 11, title: '十一月的海',
-    year: new Date().getFullYear(), busy: false
+    photos: [], zine: null, seed: 11, theme: 'quiet', spreads: 4,
+    title: '十一月的海', year: new Date().getFullYear(), busy: false
   };
 
   var $ = function (s) { return document.querySelector(s); };
   var el = {
-    styles: $('#styles'), plans: $('#plans'), formats: $('#formats'), layouts: $('#layouts'),
-    fills: $('#fills'), pageTargets: $('#pageTargets'), pageNote: $('#pageNote'),
-    blockPages: $('#blockPages'),
-    tray: $('#tray'), modes: $('#modes'),
-    pages: $('#pages'), empty: $('#empty'), stat: $('#statLine'),
-    gridPanel: $('#gridPanel'), gridWrap: $('#gridWrap'), gridStrip: $('#gridStrip'),
-    gridNote: $('#gridNote'), gridWhy: $('#gridWhy'),
+    themes: $('#themes'), counts: $('#counts'), countNote: $('#countNote'), tray: $('#tray'),
+    empty: $('#empty'), stat: $('#statLine'),
     zinePanel: $('#zinePanel'), zineList: $('#zineList'), zineNote: $('#zineNote'),
-    blockStyles: $('#blockStyles'), blockFormat: $('#blockFormat'), blockGrid: $('#blockGrid'),
-    blockPlan: $('#blockPlan'),
     title: $('#titleInput'), file: $('#fileInput'),
-    btnImport: $('#btnImport'), btnPNG: $('#btnPNG'), btnPDF: $('#btnPDF'), btnTall: $('#btnTall'),
+    btnImport: $('#btnImport'), btnPNG: $('#btnPNG'), btnPDF: $('#btnPDF'),
     btnShuffle: $('#btnShuffle'), btnPick: $('#btnPick'), btnDemo: $('#btnDemo'),
     lightbox: $('#lightbox'), lbStage: $('#lbStage'), lbCount: $('#lbCount'),
     lbPrev: $('#lbPrev'), lbNext: $('#lbNext'), lbClose: $('#lbClose'),
     picker: $('#picker'), pickerGrid: $('#pickerGrid'), pickerTitle: $('#pickerTitle'),
     pickerNote: $('#pickerNote'), pickerClose: $('#pickerClose'),
-    stageHint: $('#stageHint'),
+    pickerCrop: $('#pickerCrop'), cropBox: $('#cropBox'),
     toast: $('#toast')
   };
 
-  var PLANS = [
-    { key: 'hero', name: '主视觉优先', note: '强图当主角，弱图做细节', grid: '视觉均衡', gridNote: '挑差别最大的九张' },
-    { key: 'story', name: '时间叙事', note: '按你导入的顺序讲', grid: '时间顺序', gridNote: '按顺序挑，跳过重复的' },
-    { key: 'colour', name: '色彩分组', note: '同色系收进同一页', gridOnly: true }
-  ];
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
-  /* ---------------- ui ---------------- */
-  function buildOptions() {
-    var isGrid = state.mode === 'grid';
-    var isZine = state.mode === 'zine';
-
-    Array.prototype.forEach.call(el.modes.children, function (b) {
-      b.setAttribute('aria-pressed', String(b.dataset.mode === state.mode));
-    });
-    el.blockStyles.hidden = isGrid || isZine;
-    el.blockFormat.hidden = isGrid || isZine;
-    el.blockGrid.hidden = !isGrid;
-    el.blockPages.hidden = isGrid || isZine;
-    if (el.blockPlan) el.blockPlan.hidden = isZine;
-
-    Array.prototype.forEach.call(el.pageTargets.children, function (b) {
-      b.setAttribute('aria-pressed', String(Number(b.dataset.pages) === state.pageTarget));
-    });
-    el.pageNote.textContent = '九页 = 一张封面 + 八个跨页，导出发朋友圈就是九张方图。';
-    el.pageNote.hidden = state.pageTarget === 0;
-
-    Array.prototype.forEach.call(el.fills.children, function (b) {
-      b.setAttribute('aria-pressed', String(b.dataset.fill === state.fill));
-    });
-    el.layouts.hidden = false;
-
-    el.styles.innerHTML = '';
-    Object.keys(M.STYLES).forEach(function (k) {
-      var st = M.STYLES[k];
+  /* ---------------- rail ---------------- */
+  function buildRail() {
+    el.themes.innerHTML = '';
+    Object.keys(M.ZINE).forEach(function (k) {
+      var t = M.ZINE[k];
       var b = document.createElement('button');
       b.className = 'opt'; b.type = 'button';
-      b.setAttribute('aria-pressed', String(state.style === k));
-      b.innerHTML =
-        '<span class="opt-sw" aria-hidden="true">' +
-          [st.paper, st.ink, st.accent].map(function (c) {
-            return '<i style="background:' + c + '"></i>';
-          }).join('') +
-        '</span>' +
-        '<span class="opt-body"><span class="opt-name">' + st.name + '</span>' +
-        '<span class="opt-note">' + st.note + '</span></span>';
-      b.onclick = function () { state.style = k; buildOptions(); rebuild(); };
-      el.styles.appendChild(b);
+      b.setAttribute('aria-pressed', String(state.theme === k));
+      b.innerHTML = '<span class="opt-sw" aria-hidden="true">' +
+        [t.paper, t.ink, t.muted].map(function (c) { return '<i style="background:' + c + '"></i>'; }).join('') +
+        '</span><span class="opt-body"><span class="opt-name">' + t.name + '</span>' +
+        '<span class="opt-note">' + themeNote(k) + '</span></span>';
+      b.onclick = function () { state.theme = k; buildRail(); rebuild(); };
+      el.themes.appendChild(b);
     });
 
-    el.layouts.innerHTML = '';
-    Object.keys(M.GRID_LAYOUTS).forEach(function (k) {
-      var L = M.GRID_LAYOUTS[k];
-      var b = document.createElement('button');
-      b.className = 'opt'; b.type = 'button';
-      b.setAttribute('aria-pressed', String(state.layout === k));
-      b.innerHTML = '<span class="opt-body"><span class="opt-name">' + L.name + '</span>' +
-        '<span class="opt-note">' + L.note + '</span></span>';
-      b.onclick = function () { state.layout = k; buildOptions(); rebuild(); };
-      el.layouts.appendChild(b);
+    Array.prototype.forEach.call(el.counts.children, function (b) {
+      b.setAttribute('aria-pressed', String(Number(b.dataset.spreads) === state.spreads));
     });
+    el.countNote.textContent = state.spreads === 4
+      ? '九张 = 封面 + 四个跨页：朋友圈九图正好。'
+      : '十一张 = 封面 + 五个跨页：小红书可以发十张以上。';
+  }
 
-    el.plans.innerHTML = '';
-    PLANS.forEach(function (p) {
-      if (isGrid && p.gridOnly) return;
-      if (isGrid && p.key === 'colour') return;
-      var b = document.createElement('button');
-      b.className = 'opt'; b.type = 'button';
-      b.setAttribute('aria-pressed', String(state.plan === p.key));
-      var name = isGrid && p.grid ? p.grid : p.name;
-      var note = isGrid && p.gridNote ? p.gridNote : p.note;
-      b.innerHTML = '<span class="opt-body"><span class="opt-name">' + name + '</span>' +
-        '<span class="opt-note">' + note + '</span></span>';
-      b.onclick = function () { state.plan = p.key; buildOptions(); rebuild(); };
-      el.plans.appendChild(b);
-    });
-
-    el.formats.innerHTML = '';
-    Object.keys(M.FORMATS).forEach(function (k) {
-      var f = M.FORMATS[k];
-      var b = document.createElement('button');
-      b.type = 'button'; b.textContent = f.label;
-      b.setAttribute('aria-pressed', String(state.format === k));
-      b.disabled = state.pageTarget > 0 && k !== 'square';
-      b.onclick = function () { state.format = k; buildOptions(); rebuild(); };
-      el.formats.appendChild(b);
-    });
-
-    el.btnPDF.hidden = isGrid;
-    el.btnTall.hidden = isGrid;
-    el.btnPDF.hidden = isGrid || isZine;
-    el.btnTall.hidden = isGrid || isZine;
-    el.btnPNG.textContent = isZine ? '导出九张' : isGrid ? '导出九张' : '导出图片';
-    el.btnShuffle.textContent = isZine ? '换一版编排' : isGrid ? '换一组' : '换一版编排';
+  function themeNote(k) {
+    return {
+      quiet: '白纸、小字、留白最多',
+      editorial: '衬线标题、页脚、杂志感',
+      collage: '每页底色取自照片，色块拼贴',
+      contact: '纯白、密排、接触表'
+    }[k] || '';
   }
 
   function buildTray() {
@@ -134,7 +66,6 @@
       var img = document.createElement('img');
       img.src = p.url; img.alt = p.name || '';
       img.loading = 'lazy';
-      img.dataset.off = '0';
       img.title = (p.name || '') + ' — 点一下删掉（可撤销）';
       img.onclick = function () { deletePhoto(p); };
       el.tray.appendChild(img);
@@ -143,19 +74,16 @@
 
   /* ---------------- import ---------------- */
   var seq = 0;
-  function addUrl(url, name, revoke) {
+  function addUrl(url, name) {
     return new Promise(function (resolve) {
       var img = new Image();
       img.onload = async function () {
         var rec = await M.analyze(img, { id: 'p' + (++seq), name: name, url: url });
-        // keep a 1500 px working copy: 26 MP originals eat the tab alive
         try {
-          var small = await M.shrink(img, 1500);
+          var small = await M.shrink(img, 1600);
           rec.img = small.img; rec.url = small.url;
           rec.w = small.w; rec.h = small.h; rec.ar = small.w / small.h;
         } catch (e) { /* keep the original */ }
-        if (revoke) { try { URL.revokeObjectURL(url); } catch (e2) {} }
-        rec._revoke = null;
         state.photos.push(rec);
         resolve(rec);
       };
@@ -165,15 +93,13 @@
   }
 
   async function addFiles(files) {
-    var list = Array.prototype.slice.call(files).filter(function (f) {
-      return /^image\//.test(f.type);
-    });
+    var list = Array.prototype.slice.call(files).filter(function (f) { return /^image\//.test(f.type); });
     if (!list.length) return;
     setStat('正在读 ' + list.length + ' 张…');
     var failed = 0;
     for (var i = 0; i < list.length; i++) {
       var f = list[i];
-      var rec = await addUrl(URL.createObjectURL(f), f.name.replace(/\.[^.]+$/, ''), false);
+      var rec = await addUrl(URL.createObjectURL(f), f.name.replace(/\.[^.]+$/, ''));
       if (!rec) failed++;
       if (i % 3 === 2) setStat('正在读 ' + (i + 1) + ' / ' + list.length + '…');
     }
@@ -182,12 +108,11 @@
   }
 
   async function loadList(list, label) {
-    setStat('正在载入…');
     var ok = 0;
     for (var j = 0; j < list.length; j++) {
-      var rec = await addUrl(list[j].url, list[j].name || ('图 ' + (j + 1)), false);
+      setStat('正在载入 ' + (j + 1) + ' / ' + list.length + '…');
+      var rec = await addUrl(list[j].url, list[j].name || ('图 ' + (j + 1)));
       if (rec) ok++;
-      if (j % 5 === 4) setStat('正在载入 ' + (j + 1) + ' / ' + list.length + '…');
     }
     if (!ok) { toast((label || '照片') + '载不进来'); setStat('还没有照片'); return; }
     buildTray(); rebuild();
@@ -203,100 +128,19 @@
   function setStat(t) { el.stat.textContent = t; }
 
   function rebuild() {
-    var photos = state.photos.filter(function (p) { return !state.excluded[p.id]; });
-    if (!photos.length) {
-      el.pages.hidden = true; el.empty.hidden = false; el.gridPanel.hidden = true;
-      el.zinePanel.hidden = true;
-      el.stageHint.hidden = true;
-      el.btnPNG.disabled = true; el.btnPDF.disabled = true; el.btnTall.disabled = true;
-      el.btnShuffle.disabled = true;
+    if (!state.photos.length) {
+      el.zinePanel.hidden = true; el.empty.hidden = false;
+      el.btnPNG.disabled = true; el.btnPDF.disabled = true; el.btnShuffle.disabled = true;
       return;
     }
     el.empty.hidden = true;
-    el.btnPNG.disabled = false;
-    el.btnPDF.disabled = false; el.btnTall.disabled = false;
-    el.btnShuffle.disabled = false;
-
-    if (state.mode === 'grid') {
-      renderGrid(photos);
-    } else if (state.mode === 'zine') {
-      renderZine(photos);
-    } else {
-      renderBook(photos);
-    }
-  }
-
-  /* ---------------- book ---------------- */
-  function renderBook(photos) {
-    el.gridPanel.hidden = true;
-    el.zinePanel.hidden = true;
-    el.pages.hidden = false;
-    var res = M.build(photos, {
-      style: state.style, plan: state.plan, format: state.format,
-      seed: state.seed, title: state.title || '未命名的一卷', year: state.year,
-      pages: state.pageTarget || 0
-    });
-    state.book = res;
-    state.pages = res.pages;
-    state.repaint = paintBook;
-    setStat(photos.length + ' 张 · ' + res.pages.length + ' 页');
-    if (state.pageTarget && res.pages.length !== state.pageTarget) {
-      el.pageNote.textContent = '这组照片排不满 ' + state.pageTarget + ' 页，现在是 ' +
-        res.pages.length + ' 页（每页最多 6 张）。';
-      el.pageNote.hidden = false;
-    }
-    paintBook();
-  }
-
-  /* paints the pages we already have — a swap must not re-lay-out the book */
-  function paintBook() {
-    var res = state.book;
-    if (!res || !res.pages.length) return;
-    el.pages.innerHTML = '';
-
-    if (solo !== null) {
-      var sp = res.pages[solo] || res.pages[0];
-      el.pages.style.display = 'block';
-      el.pages.appendChild(M.renderPage(sp, soloScale));
-      return;
-    }
-
-    var stageW = el.pages.clientWidth || 900;
-    var cols = stageW > 1000 ? 3 : stageW > 640 ? 2 : 1;
-    var gapPx = 24;
-    el.pages.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
-    var scale = ((stageW - (cols - 1) * gapPx) / cols - 2) / res.format.w;
-
-    res.pages.forEach(function (page, i) {
-      var slot = document.createElement('div');
-      slot.className = 'page-slot';
-      var btn = document.createElement('button');
-      btn.className = 'page-btn'; btn.type = 'button';
-      btn.setAttribute('aria-label', '放大第 ' + (i + 1) + ' 页');
-      btn.appendChild(M.renderPage(page, scale, {
-        frameClick: function (fi) { openEditor(i, fi); }
-      }));
-      btn.onclick = function () { openLightbox(i); };
-      var lab = document.createElement('div');
-      lab.className = 'page-label';
-      lab.innerHTML = '<b>' + String(i + 1).padStart(2, '0') + '</b>' +
-        (i === 0 ? '封面' : sceneName(page));
-      slot.appendChild(btn); slot.appendChild(lab);
-      el.pages.appendChild(slot);
-    });
-    el.stageHint.hidden = false;
-  }
-
-  /* ---------------- zine: portrait pages that pair into spreads ---------------- */
-  function renderZine(photos) {
-    el.pages.hidden = true; el.gridPanel.hidden = true; el.stageHint.hidden = true;
     el.zinePanel.hidden = false;
-    var z = M.buildZine(photos, {
-      seed: state.seed, title: state.title || '未命名的一卷', year: state.year, spreads: 4
+    el.btnPNG.disabled = false; el.btnPDF.disabled = false; el.btnShuffle.disabled = false;
+
+    state.zine = M.buildZine(state.photos, {
+      seed: state.seed, title: state.title || '未命名的一卷', year: state.year,
+      theme: state.theme, spreads: state.spreads
     });
-    state.zine = z;
-    state.pages = z.pages;
-    state.repaint = paintZine;
     paintZine();
   }
 
@@ -305,7 +149,7 @@
     if (!z || !z.pages.length) return;
     el.zineList.innerHTML = '';
     var stageW = el.zineList.clientWidth || 1000;
-    var scale = Math.min((stageW - 6) / (2 * z.pages[0].w), 520 / z.pages[0].h);
+    var scale = Math.min((stageW - 6) / (2 * z.pages[0].w), 500 / z.pages[0].h);
 
     function pageBtn(pg, pi, label) {
       var btn = document.createElement('button');
@@ -314,17 +158,16 @@
       btn.appendChild(M.renderPage(pg, scale, {
         frameClick: function (fi) { openEditor(pi, fi); }
       }));
-      btn.onclick = function () { openLightbox(pi, z.pages); };
+      btn.onclick = function () { openLightbox(pi); };
       return btn;
     }
 
-    // cover
     var row0 = document.createElement('div');
     row0.className = 'spread-row spread-row--single';
+    row0.appendChild(pageBtn(z.pages[0], 0, '封面'));
     var l0 = document.createElement('span');
     l0.className = 'spread-label';
     l0.textContent = '01 · 封面';
-    row0.appendChild(pageBtn(z.pages[0], 0, '封面'));
     row0.appendChild(l0);
     el.zineList.appendChild(row0);
 
@@ -352,71 +195,110 @@
       el.zineList.appendChild(row);
     });
 
-    el.zineNote.textContent = z.total + ' 张 · ' + z.pages.length +
-      ' 张图（1 封面 + ' + z.spreads.length + ' 个跨页）· 相邻两张是一页展开：' +
-      '手机上一左一右滑过去，横图会连起来。';
+    el.zineNote.textContent = z.total + ' 张 → ' + z.pages.length + ' 张图（1 封面 + ' +
+      z.spreads.length + ' 个跨页）· 两张一组，手机上滑过去，横图连成一整张。';
     setStat(z.total + ' 张 · ' + z.pages.length + ' 张图');
   }
 
-  function pad2(n) { return (n < 10 ? '0' : '') + n; }
-
-  /* swap one spread's layout; photos that no longer fit move to the neighbour */
   function changeSpreadType(i, key) {
     var z = state.zine;
     if (!z || !z.chunks) return;
     var chunks = z.chunks.map(function (c) { return c.slice(); });
     var types = z.types.map(function (t, j) { return j === i ? key : t; });
     M.rebalanceZine(chunks, types, z.total - 1);
-
     state.zine = M.buildZine(state.photos, {
       chunks: chunks, types: types, coverPhoto: z.cover,
-      title: state.title || '未命名的一卷', year: state.year, seed: state.seed
+      title: state.title || '未命名的一卷', year: state.year, seed: state.seed, theme: state.theme
     });
-    state.pages = state.zine.pages;
     paintZine();
   }
 
-  /* ---------------- swap / delete ---------------- */
+  /* ---------------- editor: swap / crop / delete ---------------- */
   var editTarget = null;
-
-  function arLoss(photo, slotAR) {
-    return Math.abs(Math.log((photo.ar || 1) / slotAR));
-  }
 
   function frameUsage() {
     var map = {};
-    state.pages.forEach(function (p, pj) {
+    state.zine.pages.forEach(function (p, pj) {
       p.frames.forEach(function (f) { map[f.photo.id] = pj; });
     });
     return map;
   }
 
+  function arLoss(photo, slotAR) {
+    return Math.abs(Math.log((photo.ar || 1) / slotAR));
+  }
+
   function openEditor(pi, fi) {
-    var page = state.pages[pi];
+    var page = state.zine.pages[pi];
     if (!page || !page.frames[fi]) return;
-    var frame = page.frames[fi];
+    var fr = page.frames[fi];
     editTarget = { pi: pi, fi: fi };
-    var slotAR = (frame.w - frame.pad * 2) / (frame.h - frame.pad * 2);
-    var cur = frame.photo;
+    var slotAR = (fr.w - fr.pad * 2) / (fr.h - fr.pad * 2);
+    var cur = fr.photo;
     var usage = frameUsage();
+
+    el.pickerTitle.textContent = (pi === 0 ? '封面' : '第 ' + pi + ' 页') + ' · 第 ' + (fi + 1) + ' 张';
 
     var cands = state.photos.filter(function (p) { return p !== cur; });
     cands.sort(function (a, b) { return arLoss(a, slotAR) - arLoss(b, slotAR); });
-    // flag only the three worst crops: warning on half the library is noise
     var lossList = cands.map(function (p) { return arLoss(p, slotAR); }).sort(function (a, b) { return b - a; });
     var cutLine = lossList.length > 3 ? lossList[2] : Infinity;
 
-    el.pickerTitle.textContent = (pi === 0 ? '封面' : '第 ' + pi + ' 页') + ' · 第 ' + (fi + 1) + ' 张';
-    el.pickerNote.textContent = '点一张就换进来：没在用的直接替换；已经在别的页的，跟那一张互换位置。越靠前裁切越少。';
+    el.pickerNote.textContent = '点一张就换进来；已经在别的页的，跟那一张互换。下面可以拖动画面选显示的部分。';
+
+    // crop adjuster
+    var boxW = 220, boxH = Math.round(boxW / slotAR);
+    el.cropBox.style.width = boxW + 'px';
+    el.cropBox.style.height = boxH + 'px';
+    el.cropBox.innerHTML = '';
+    var img = document.createElement('img');
+    img.src = cur.url; img.alt = '';
+    img.style.position = 'absolute';
+    el.cropBox.appendChild(img);
+    el.pickerCrop.hidden = false;
+
+    function paintCrop() {
+      var c = fr.crop;
+      var k = boxW / c.sw;
+      img.style.width = (cur.w * k) + 'px';
+      img.style.height = (cur.h * k) + 'px';
+      img.style.left = (-c.sx * k) + 'px';
+      img.style.top = (-c.sy * k) + 'px';
+    }
+    paintCrop();
+
+    var drag = null;
+    el.cropBox.onpointerdown = function (ev) {
+      drag = { x: ev.clientX, y: ev.clientY, focal: focalOf(fr) };
+      el.cropBox.setPointerCapture(ev.pointerId);
+      el.cropBox.classList.add('dragging');
+    };
+    el.cropBox.onpointermove = function (ev) {
+      if (!drag) return;
+      var k = boxW / fr.crop.sw;
+      var dfx = -(ev.clientX - drag.x) / k / cur.w;
+      var dfy = -(ev.clientY - drag.y) / k / cur.h;
+      fr.focal = {
+        x: Math.max(0.05, Math.min(0.95, drag.focal.x + dfx)),
+        y: Math.max(0.05, Math.min(0.95, drag.focal.y + dfy))
+      };
+      fr.crop = M.cropFor(cur, fr.w - fr.pad * 2, fr.h - fr.pad * 2, fr.focal);
+      paintCrop();
+    };
+    el.cropBox.onpointerup = function () {
+      if (!drag) return;
+      drag = null;
+      el.cropBox.classList.remove('dragging');
+      paintZine();
+    };
+
     el.pickerGrid.innerHTML = '';
     cands.forEach(function (p) {
       var b = document.createElement('button');
       b.className = 'picker-item'; b.type = 'button';
-      var loss = arLoss(p, slotAR);
-      if (loss > cutLine) b.dataset.fit = '0';
+      if (arLoss(p, slotAR) > cutLine) b.dataset.fit = '0';
       var usedOn = usage[p.id];
-      b.title = (usedOn == null ? '未使用' : (usedOn === 0 ? '封面' : '第 ' + usedOn + ' 页')) +
-        ' · ' + p.w + '×' + p.h;
+      b.title = (usedOn == null ? '未使用' : (usedOn === 0 ? '封面' : '第 ' + usedOn + ' 页')) + ' · ' + p.w + '×' + p.h;
       var im = document.createElement('img');
       im.src = p.url; im.alt = '';
       var tag = document.createElement('b');
@@ -429,7 +311,6 @@
     var del = document.createElement('button');
     del.className = 'btn btn-danger';
     del.textContent = '删掉这张';
-    del.title = '从这组照片里删掉，可撤销';
     del.onclick = function () { deletePhoto(cur); };
     var head = document.getElementById('pickerHead');
     var stale = head.querySelector('.btn-danger');
@@ -439,27 +320,38 @@
     el.picker.hidden = false;
   }
 
-  function closePicker() { el.picker.hidden = true; el.pickerGrid.innerHTML = ''; editTarget = null; }
+  function focalOf(fr) {
+    return fr.focal || fr.photo.focal || { x: 0.5, y: 0.5 };
+  }
 
-  function setFramePhoto(frame, photo) {
-    frame.photo = photo;
-    frame.crop = M.cropFor(photo, frame.w - frame.pad * 2, frame.h - frame.pad * 2);
+  function closePicker() {
+    el.picker.hidden = true;
+    el.pickerCrop.hidden = true;
+    el.cropBox.innerHTML = '';
+    el.pickerGrid.innerHTML = '';
+    editTarget = null;
+  }
+
+  function setFramePhoto(fr, photo) {
+    fr.photo = photo;
+    fr.focal = null;
+    fr.crop = M.cropFor(photo, fr.w - fr.pad * 2, fr.h - fr.pad * 2);
   }
 
   function applySwap(target) {
     var t = editTarget;
     if (!t) return;
-    var frame = state.pages[t.pi].frames[t.fi];
-    var cur = frame.photo;
+    var fr = state.zine.pages[t.pi].frames[t.fi];
+    var cur = fr.photo;
     if (target === cur) { closePicker(); return; }
     var from = null;
-    state.pages.forEach(function (p, pj) {
+    state.zine.pages.forEach(function (p, pj) {
       p.frames.forEach(function (f, fj) { if (f.photo === target) from = { pj: pj, fj: fj }; });
     });
-    setFramePhoto(frame, target);
-    if (from) setFramePhoto(state.pages[from.pj].frames[from.fj], cur);
+    setFramePhoto(fr, target);
+    if (from) setFramePhoto(state.zine.pages[from.pj].frames[from.fj], cur);
     closePicker();
-    if (state.repaint) state.repaint();
+    paintZine();
     toast(from ? '两张互换了位置' : '换好了');
   }
 
@@ -477,128 +369,37 @@
     });
   }
 
-  function sceneName(page) {
-    var n = page.frames.length;
-    var map = { 1: '整版', 2: '跨栏', 3: '三格', 4: '四格', 6: '六格', 8: '八格' };
-    return map[n] || n + ' 图';
-  }
-
-  /* ---------------- grid ---------------- */
-  function renderGrid(photos) {
-    el.pages.hidden = true;
-    el.gridPanel.hidden = false;
-    el.stageHint.hidden = true;
-    var mosaic = state.fill === 'mosaic';
-    var g = mosaic
-      ? M.buildMosaic(photos, { layout: state.layout, plan: state.plan, seed: state.seed })
-      : M.buildGrid(photos, { layout: state.layout, plan: state.plan, seed: state.seed, fixed: pickList });
-    state.grid = g;
-    var n = g.tiles.length;
-    setStat(photos.length + ' 张 → 选 ' + n + ' 张');
-
-    el.gridWrap.innerHTML = '';
-    el.gridWrap.dataset.layout = g.layout.key;
-    var stageW = el.gridPanel.clientWidth || 1080;
-    var sideW = stageW > 820 ? 300 + 44 : 0;
-    var box = Math.max(320, Math.min(720, stageW - sideW));
-    var cell = Math.floor((box - 8) / 3);
-    el.gridWrap.style.width = (cell * 3 + 8) + 'px';
-    g.tiles.forEach(function (t, i) {
-      var cellEl = document.createElement('div');
-      cellEl.className = 'grid-cell';
-      var b = document.createElement('button');
-      b.type = 'button'; b.className = 'grid-btn';
-      b.setAttribute('aria-label', '第 ' + (i + 1) + ' 格');
-      b.appendChild(M.renderPage(t, cell / t.w));
-      b.onclick = function () { openLightbox(i, g.tiles); };
-      var num = document.createElement('span');
-      num.className = 'grid-num';
-      num.textContent = String(i + 1).padStart(2, '0');
-      cellEl.appendChild(b); cellEl.appendChild(num);
-      el.gridWrap.appendChild(cellEl);
-    });
-
-    el.gridStrip.innerHTML = '';
-    el.gridStrip.className = 'grid-strip' + (mosaic ? ' grid-strip--counts' : '');
-    if (mosaic) {
-      (g.counts || []).forEach(function (c, i) {
-        var d = document.createElement('div');
-        d.className = 'count-cell';
-        d.textContent = c;
-        d.title = '第 ' + (i + 1) + ' 格 · ' + c + ' 张';
-        el.gridStrip.appendChild(d);
-      });
-    } else {
-      g.cells.forEach(function (p, i) {
-        var cell2 = document.createElement('div');
-        cell2.className = 'strip-cell';
-        var im = document.createElement('img');
-        im.src = p.url; im.alt = p.name || '';
-        var n2 = document.createElement('b');
-        n2.textContent = String(i + 1).padStart(2, '0');
-        cell2.appendChild(im); cell2.appendChild(n2);
-        cell2.title = p.name || '';
-        el.gridStrip.appendChild(cell2);
-      });
-    }
-
-    if (mosaic) {
-      el.gridNote.textContent = photos.length + ' 张全部用上 · 每格 1–6 张 · 按 01–09 的顺序发';
-      el.gridWhy.textContent = '中间那格只放一张，是全组的眼；四个角放得最密，四边留一口气。' +
-        '所以九张摆在一起读起来是一张版面，不是九张照片。';
-      setStat(photos.length + ' 张 → 9 格');
-    } else {
-      el.gridNote.textContent = '从 ' + photos.length + ' 张里选 9 张 · ' +
-        (g.layout.key === 'paper' ? '每张留纸边' : '满幅') + ' · 按这个顺序发，微信里就是这张图';
-      var dark = g.cells.filter(function (p) { return (p.bright || .5) < 0.36; }).length;
-      el.gridWhy.textContent = '上一排与下一排之间换了明暗和色系：' + dark +
-        ' 张暗调穿插在亮调里，中间那格放的是这一组最抓眼的一张。';
-      setStat(photos.length + ' 张 → 选 ' + n + ' 张');
-    }
-  }
-
   /* ---------------- lightbox ---------------- */
-  var lbIndex = 0, lbList = null;
-  function openLightbox(i, list) {
+  var lbIndex = 0;
+  function openLightbox(i) {
     lbIndex = i;
-    lbList = list || state.pages;
     el.lightbox.hidden = false;
     paintLightbox();
   }
   function paintLightbox() {
-    var list = lbList || state.pages;
-    var page = list[lbIndex];
+    var pages = state.zine ? state.zine.pages : [];
+    var page = pages[lbIndex];
     if (!page) return;
     var s = Math.min((window.innerWidth - 120) / page.w, (window.innerHeight - 170) / page.h);
     s = Math.max(0.2, Math.min(s, 1.6));
     el.lbStage.innerHTML = '';
     el.lbStage.appendChild(M.renderPage(page, s));
-    el.lbCount.textContent = (lbIndex + 1) + ' / ' + list.length;
+    el.lbCount.textContent = (lbIndex + 1) + ' / ' + pages.length;
   }
-  function closeLightbox() { el.lightbox.hidden = true; el.lbStage.innerHTML = ''; lbList = null; }
+  function closeLightbox() { el.lightbox.hidden = true; el.lbStage.innerHTML = ''; }
 
   /* ---------------- export ---------------- */
   async function doExport(kind) {
-    if (state.busy) return;
-    var isGrid = state.mode === 'grid';
-    var isZine = state.mode === 'zine';
-    var pages = isZine ? (state.zine && state.zine.pages) : state.pages;
-    if (isGrid ? (!state.grid || !state.grid.tiles.length) : !pages || !pages.length) return;
+    if (state.busy || !state.zine || !state.zine.pages.length) return;
     state.busy = true;
-    toast(kind === 'grid' ? '正在导出九张…' : kind === 'pdf' ? '正在生成 PDF…' : kind === 'tall' ? '正在拼长图…' : '正在导出图片…');
+    toast(kind === 'pdf' ? '正在生成 PDF…' : '正在导出…');
     try {
-      if (kind === 'grid') {
-        var n = await M.exportGrid(state.grid, state.title, { scale: 1 });
-        toast('已导出 ' + n + ' 张 1080×1080（浏览器可能询问是否允许多文件下载）');
-      } else if (kind === 'pdf') {
-        var bytes = await M.exportPDF(pages, state.title);
+      if (kind === 'pdf') {
+        var bytes = await M.exportPDF(state.zine.pages, state.title);
         toast('PDF 已生成 · ' + Math.round(bytes / 1024) + ' KB');
-      } else if (kind === 'tall') {
-        var info = await M.exportTall(pages, state.title);
-        toast('长图已生成 · ' + info.w + '×' + info.h + ' · ' + info.kb + ' KB');
       } else {
-        var k = await M.exportPNG(pages, state.title);
-        toast('已导出 ' + k + ' 张 PNG');
+        var n = await M.exportPNG(state.zine.pages, state.title);
+        toast('已导出 ' + n + ' 张 · 1080×1440（浏览器可能询问是否允许多文件下载）');
       }
     } catch (err) {
       toast('导出失败：' + (err && err.message ? err.message : err));
@@ -609,6 +410,7 @@
   /* ---------------- toast ---------------- */
   var toastTimer;
   function toast(msg) {
+    el.toast.innerHTML = '';
     el.toast.textContent = msg;
     el.toast.hidden = false;
     clearTimeout(toastTimer);
@@ -630,55 +432,32 @@
   }
 
   /* ---------------- wire up ---------------- */
-  el.modes.addEventListener('click', function (e) {
-    var b = e.target.closest('button[data-mode]');
+  el.counts.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-spreads]');
     if (!b) return;
-    state.mode = b.dataset.mode;
-    lbList = null;
-    buildOptions();
-    rebuild();
-  });
-  el.fills.addEventListener('click', function (e) {
-    var b = e.target.closest('button[data-fill]');
-    if (!b) return;
-    state.fill = b.dataset.fill;
-    buildOptions();
-    rebuild();
-  });
-  el.pageTargets.addEventListener('click', function (e) {
-    var b = e.target.closest('button[data-pages]');
-    if (!b) return;
-    state.pageTarget = Number(b.dataset.pages) || 0;
-    if (state.pageTarget > 0) state.format = 'square';
-    buildOptions();
-    rebuild();
+    state.spreads = Number(b.dataset.spreads);
+    buildRail(); rebuild();
   });
   el.btnImport.onclick = el.btnPick.onclick = function () { el.file.click(); };
   el.file.onchange = function (e) { addFiles(e.target.files); el.file.value = ''; };
   el.btnDemo.onclick = loadDemo;
   el.btnPDF.onclick = function () { doExport('pdf'); };
-  el.btnPNG.onclick = function () { doExport(state.mode === 'grid' ? 'grid' : 'png'); };
-  el.btnTall.onclick = function () { doExport('tall'); };
+  el.btnPNG.onclick = function () { doExport('png'); };
   el.btnShuffle.onclick = function () { state.seed = (state.seed * 7919 + 13) % 100000; rebuild(); };
-  el.lbClose.onclick = closeLightbox;
   el.pickerClose.onclick = closePicker;
-  el.picker.addEventListener('click', function (e) {
-    if (e.target === el.picker) closePicker();
-  });
+  el.picker.addEventListener('click', function (e) { if (e.target === el.picker) closePicker(); });
+  el.lbClose.onclick = closeLightbox;
   el.lbPrev.onclick = function () {
-    var L = lbList || state.pages;
-    lbIndex = (lbIndex - 1 + L.length) % L.length; paintLightbox();
+    var n = state.zine.pages.length;
+    lbIndex = (lbIndex - 1 + n) % n; paintLightbox();
   };
   el.lbNext.onclick = function () {
-    var L = lbList || state.pages;
-    lbIndex = (lbIndex + 1) % L.length; paintLightbox();
+    var n = state.zine.pages.length;
+    lbIndex = (lbIndex + 1) % n; paintLightbox();
   };
-  window.addEventListener('resize', function () { if (!el.lightbox.hidden) paintLightbox(); });
-  var rTimer;
   window.addEventListener('resize', function () {
-    if (solo !== null) return;
-    clearTimeout(rTimer);
-    rTimer = setTimeout(rebuild, 220);
+    if (!el.lightbox.hidden) paintLightbox();
+    else if (state.zine) paintZine();
   });
 
   var tTimer;
@@ -689,10 +468,7 @@
   };
 
   document.addEventListener('keydown', function (e) {
-    if (!el.picker.hidden) {
-      if (e.key === 'Escape') closePicker();
-      return;
-    }
+    if (!el.picker.hidden) { if (e.key === 'Escape') closePicker(); return; }
     if (el.lightbox.hidden) return;
     if (e.key === 'Escape') closeLightbox();
     if (e.key === 'ArrowLeft') el.lbPrev.click();
@@ -706,33 +482,14 @@
   });
 
   /* ---------------- url presets ---------------- */
-  var solo = null, soloScale = 1, manifest = null, pickList = null;
+  var manifest = null;
   try {
     var qs = new URLSearchParams(location.search);
-    ['style', 'plan', 'format', 'layout', 'mode', 'fill'].forEach(function (k) {
-      var v = qs.get(k);
-      if (!v) return;
-      if (k === 'style' && !M.STYLES[v]) return;
-      if (k === 'format' && !M.FORMATS[v]) return;
-      if (k === 'layout' && !M.GRID_LAYOUTS[v]) return;
-      if (k === 'fill' && v !== 'single' && v !== 'mosaic') return;
-      state[k] = v;
-    });
-    if (qs.get('pages')) {
-      state.pageTarget = parseInt(qs.get('pages'), 10) || 0;
-      if (state.pageTarget > 0) state.format = 'square';
-    }
-    if (qs.get('pick')) {
-      pickList = qs.get('pick').split(',').map(function (s) { return parseInt(s, 10); })
-        .filter(function (n) { return n > 0; });
-    }
-    if (['book', 'grid', 'zine'].indexOf(state.mode) < 0) state.mode = 'book';
+    if (qs.get('theme') && M.ZINE[qs.get('theme')]) state.theme = qs.get('theme');
+    if (qs.get('spreads')) state.spreads = parseInt(qs.get('spreads'), 10) || 4;
     if (qs.get('title')) { state.title = qs.get('title'); el.title.value = state.title; }
-    if (qs.get('solo') != null) solo = parseInt(qs.get('solo'), 10) || 0;
-    if (qs.get('scale')) soloScale = parseFloat(qs.get('scale')) || 1;
     if (qs.get('manifest')) manifest = qs.get('manifest');
   } catch (e) { /* ignore */ }
-  if (solo !== null) document.body.classList.add('solo-mode');
 
   function hideDemo() {
     el.btnDemo.hidden = true;
@@ -740,7 +497,7 @@
     if (hint) hint.textContent = '本地处理，不上传。把照片拖进来，或者点「选择照片」——四十张也可以。';
   }
 
-  buildOptions();
+  buildRail();
   buildTray();
   rebuild();
 
@@ -755,6 +512,5 @@
     }).catch(function () { hideDemo(); });
   }
 
-  /* debug handle for the verification driver */
-  window.__mem = { state: state, rebuild: rebuild, M: M };
+  window.__mem = { state: state, rebuild: rebuild, M: M, paint: paintZine };
 })();
