@@ -483,3 +483,32 @@ body.solo-mode .page-wrap{margin:0}
 .text-select--sm{height:26px;font-size:11.5px;max-width:180px}
 
 .text-check--wide{margin-left:auto;white-space:nowrap}
+
+.zine-panel{margin:0 auto}
+
+.spread-row{justify-content:center}
+.spread-label{left:50%;transform:translateX(-50%)}
+
+/* picking photos for this book */
+.plib-item{cursor:pointer}
+.plib-item .plib-pick{
+  position:absolute;right:5px;bottom:4px;width:18px;height:18px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:11px;
+  background:rgba(20,18,14,.55);color:#fff;border:1px solid rgba(255,255,255,.7);
+}
+.plib-item.is-in .plib-pick{background:#4a6b4a;border-color:#fff}
+.plib-item.is-out img{opacity:.32;filter:saturate(.4)}
+.plib-item.is-out .plib-pick{background:rgba(255,255,255,.9);color:#333;border-color:rgba(0,0,0,.25)}
+.plib-item.is-out .plib-used{display:none}
+.plib-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+.plib-del{
+  position:absolute;left:4px;bottom:4px;width:18px;height:18px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;
+  background:rgba(20,18,14,.45);color:#fff;opacity:0;transition:opacity .12s;cursor:pointer;
+}
+.plib-item:hover .plib-del{opacity:1}
+.plib-item .plib-pick{right:5px;bottom:4px}
+.plib-item .plib-used{right:5px;top:4px}
+.plib-star{left:5px;top:3px}
+@media (hover:none){.plib-del{opacity:.85}}

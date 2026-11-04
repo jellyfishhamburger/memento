@@ -54,8 +54,9 @@
     </section>
 
     <section class="rail-block">
-      <h2 class="rail-title">照片</h2>
-      <p class="rail-note">点一张删掉（可撤销）。</p>
+      <h2 class="rail-title">这本用到的照片</h2>
+      <p class="rail-note">点一张移出这本（可撤销，照片还在库里）。加照片用下面的「挑选照片」。</p>
+      <button id="btnPickPhotos" class="btn btn-ghost btn-wide" type="button">挑选照片</button>
       <div id="tray" class="tray"></div>
     </section>
 
@@ -230,9 +231,12 @@
     <div class="lib-tools">
       <div class="seg seg--sm" id="plibFilter" role="group">
         <button type="button" data-filter="all">全部</button>
+        <button type="button" data-filter="in">在这本</button>
+        <button type="button" data-filter="out">没在这本</button>
         <button type="button" data-filter="star">★ 收藏</button>
-        <button type="button" data-filter="unused">没用上</button>
       </div>
+      <button id="plibAll" class="btn btn-ghost">全选</button>
+      <button id="plibNone" class="btn btn-ghost">全不选</button>
       <span id="plibCount" class="lib-quota"></span>
     </div>
     <div id="plibGrid" class="plib-grid"></div>

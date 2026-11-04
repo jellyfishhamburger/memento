@@ -55,6 +55,7 @@
     btnVersion: $('#btnVersion'), btnLibrary: $('#btnLibrary'), btnPhotos: $('#btnPhotos'),
     photoLib: $('#photoLib'), plibGrid: $('#plibGrid'), plibNote: $('#plibNote'),
     plibCount: $('#plibCount'), plibFilter: $('#plibFilter'), plibClose: $('#plibClose'),
+    plibAll: $('#plibAll'), plibNone: $('#plibNone'),
     library: $('#library'), libList: $('#libList'), libNote: $('#libNote'), libQuota: $('#libQuota'),
     libNew: $('#libNew'), libBackup: $('#libBackup'), libImport: $('#libImport'),
     libClose: $('#libClose'), backupInput: $('#backupInput'),
@@ -407,7 +408,7 @@
   function buildTray() {
     var note = document.querySelector('.rail-block .rail-note');
     if (note) note.textContent = state.photos.length
-      ? '本次 ' + state.photos.length + ' 张（刷新也在）；点一张删掉，可撤销'
+      ? '这本 ' + state.photos.length + ' 张（刷新也在）；点一张移出这本，可撤销'
       : '还没有照片：点上面的「选照片」或用示例。';
     el.tray.innerHTML = '';
     state.photos.forEach(function (p) {
@@ -805,11 +806,19 @@
 
   function paintZine() {
     var z = state.zine;
-    if (!z || !z.pages.length) return;
+    if (!z || !z.pages.length) {
+      el.zinePanel.hidden = true;
+      el.empty.hidden = false;
+      return;
+    }
+    el.zinePanel.hidden = false;
+    el.empty.hidden = true;
     el.zineList.innerHTML = '';
     var stageW = (el.zineList.clientWidth || 1000) - 56;   // leave room for the lock tools beside the pages
     var pair = z.pair;
-    var maxH = isJp() ? 620 : 500;
+    // fill the window, not a fixed 500px: on a big screen the pages should be big
+    var availH = Math.max(360, Math.min((window.innerHeight || 900) - 210, 900));
+    var maxH = Math.min(availH, isJp() ? 780 : 720);
     var scale = Math.min((stageW - 6) / (pair ? 2 * z.pages[0].w : z.pages[0].w), maxH / z.pages[0].h);
 
     function pageBtn(pg, pi, label) {
@@ -1659,10 +1668,26 @@
   }
   function closePhotoLibrary() { el.photoLib.hidden = true; }
 
+  var pickTimer = null;
+  function pickChanged() {
+    buildTray();
+    clearTimeout(pickTimer);
+    pickTimer = setTimeout(function () { rebuild(); scheduleSave(); }, 180);
+  }
+
+  function toggleInBook(p) {
+    var i = state.photos.indexOf(p);
+    if (i >= 0) state.photos.splice(i, 1);
+    else state.photos.push(p);
+    pickChanged();
+    renderPhotoLibrary();
+    toast(i >= 0 ? '从这本里移出（照片还在库里）' : '加到这本了 · 这本现在 ' + state.photos.length + ' 张');
+  }
+
   async function renderPhotoLibrary() {
     var all = state.library;
-    var used = {};
-    state.photos.forEach(function (p) { used[p.id] = (used[p.id] || 0) + 1; });
+    var inBook = {};
+    state.photos.forEach(function (p) { inBook[p.id] = 1; });
 
     // how many books reference each photo (from their versions)
     var books = {};
@@ -1672,13 +1697,13 @@
       var draft = vs.filter(function (v) { return v.isAutoSaved; })[0];
       var snap = draft && draft.snapshot;
       if (!snap) continue;
-      var ids = snap.photoIds || [];
-      ids.forEach(function (id) { books[id] = (books[id] || 0) + 1; });
+      (snap.photoIds || []).forEach(function (id) { books[id] = (books[id] || 0) + 1; });
     }
 
     var list = all.slice();
+    if (plibFilter === 'in') list = list.filter(function (p) { return inBook[p.id]; });
+    if (plibFilter === 'out') list = list.filter(function (p) { return !inBook[p.id]; });
     if (plibFilter === 'star') list = list.filter(function (p) { return p.starred; });
-    if (plibFilter === 'unused') list = list.filter(function (p) { return !books[p.id]; });
     list.sort(function (a, b) { return (b.importedAt || 0) - (a.importedAt || 0); });
 
     Array.prototype.forEach.call(el.plibFilter.children, function (b) {
@@ -1689,7 +1714,8 @@
     var stored = all.reduce(function (a, p) {
       return a + ((p.bytes && (p.bytes.preview + p.bytes.thumb)) || 0);
     }, 0);
-    var bits = [all.length + ' 张'];
+    var bits = ['这本 ' + state.photos.length + ' 张'];
+    bits.push('库里共 ' + all.length + ' 张');
     var starred = all.filter(function (p) { return p.starred; }).length;
     if (starred) bits.push(starred + ' 张收藏');
     if (stored) bits.push('这套 ' + (stored / 1024).toFixed(1) + ' MB');
@@ -1697,19 +1723,24 @@
       (e.quota ? ' / 可用 ' + (e.quota / 1073741824).toFixed(1) + ' GB' : ''));
     el.plibCount.textContent = bits.join(' · ');
 
+    var scroll = el.plibGrid.scrollTop;
     el.plibGrid.innerHTML = '';
     if (!list.length) {
       var empty = document.createElement('p');
       empty.className = 'lib-sub';
       empty.style.gridColumn = '1/-1';
-      empty.textContent = plibFilter === 'unused' ? '每一张都用上了。' : '这里还没有照片。';
+      empty.textContent = plibFilter === 'out' ? '每一张都在这本里了。' :
+        plibFilter === 'in' ? '这本还没有照片，点下面的图把照片加进来。' : '这里还没有照片。';
       el.plibGrid.appendChild(empty);
       return;
     }
 
     list.forEach(function (p) {
+      var isIn = !!inBook[p.id];
       var box = document.createElement('div');
-      box.className = 'plib-item';
+      box.className = 'plib-item ' + (isIn ? 'is-in' : 'is-out');
+      box.title = isIn ? '在这本里（点一下移出）' : '不在这本（点一下加进来）';
+
       var im = document.createElement('img');
       im.src = p.url; im.alt = p.name || '';
       im.loading = 'lazy';
@@ -1719,10 +1750,11 @@
       star.className = 'plib-star';
       star.textContent = p.starred ? '★' : '☆';
       star.title = p.starred ? '取消收藏' : '收藏（★ 优先当主视觉）';
-      star.onclick = async function () {
+      star.onclick = async function (ev) {
+        ev.stopPropagation();
         p.starred = !p.starred;
         await M.STORE.setStarred(p.id, p.starred);
-        if (state.photos.indexOf(p) >= 0) { rebuild(); }
+        if (state.photos.indexOf(p) >= 0) rebuild();
         renderPhotoLibrary();
       };
       box.appendChild(star);
@@ -1730,31 +1762,26 @@
       var n = books[p.id] || 0;
       var tag = document.createElement('span');
       tag.className = 'plib-used';
-      tag.textContent = n ? n + ' 本' : (used[p.id] ? '本册' : '未用');
+      tag.textContent = n ? n + ' 本' : '未用';
       box.appendChild(tag);
 
-      var acts = document.createElement('div');
-      acts.className = 'plib-act';
-      if (!used[p.id]) {
-        var add = document.createElement('button');
-        add.textContent = '加入这本';
-        add.onclick = async function () {
-          if (state.photos.indexOf(p) < 0) {
-            state.photos.push(p);
-            buildTray(); rebuild(); scheduleSave();
-            toast('加到这本了');
-          }
-        };
-        acts.appendChild(add);
-      }
-      var del = document.createElement('button');
-      del.textContent = '彻底删';
-      del.onclick = function () { deleteFromLibrary(p, books[p.id] || 0); };
-      acts.appendChild(del);
-      box.appendChild(acts);
+      var pick = document.createElement('span');
+      pick.className = 'plib-pick';
+      pick.textContent = isIn ? '✓' : '+';
+      box.appendChild(pick);
+
+      box.onclick = function () { toggleInBook(p); };
+
+      var del = document.createElement('span');
+      del.className = 'plib-del';
+      del.textContent = '✕';
+      del.title = '从照片库彻底删除';
+      del.onclick = function (ev) { ev.stopPropagation(); deleteFromLibrary(p, books[p.id] || 0); };
+      box.appendChild(del);
 
       el.plibGrid.appendChild(box);
     });
+    el.plibGrid.scrollTop = scroll;
   }
 
   async function deleteFromLibrary(p, bookCount) {
@@ -1783,8 +1810,21 @@
   }
 
   el.btnPhotos.onclick = openPhotoLibrary;
+  if (el.btnPickPhotos) el.btnPickPhotos.onclick = function () { plibFilter = 'out'; openPhotoLibrary(); };
   el.plibClose.onclick = closePhotoLibrary;
   el.photoLib.addEventListener('click', function (e) { if (e.target === el.photoLib) closePhotoLibrary(); });
+  if (el.plibAll) el.plibAll.onclick = function () {
+    state.photos = state.library.slice();
+    pickChanged();
+    renderPhotoLibrary();
+    toast('这本用上了全部 ' + state.photos.length + ' 张');
+  };
+  if (el.plibNone) el.plibNone.onclick = function () {
+    state.photos = [];
+    pickChanged();
+    renderPhotoLibrary();
+    toast('这本清空了（照片还在库里）');
+  };
   el.plibFilter.addEventListener('click', function (e) {
     var b = e.target.closest('button[data-filter]');
     if (!b) return;
