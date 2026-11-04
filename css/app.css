@@ -331,3 +331,11 @@ body.solo-mode .page-wrap{margin:0}
 
 .spread-row .page-btn{width:auto}
 .spread-row .page-wrap{overflow:hidden}
+
+/* 照片格 + 主视觉星标 */
+.tray-cell{position:relative;line-height:0}
+.tray-cell img{width:100%;display:block;border-radius:2px}
+.tray-cell.on img{outline:2px solid var(--accent);outline-offset:-2px}
+.tray-star{position:absolute;right:2px;top:2px;width:22px;height:22px;border:0;border-radius:50%;
+  background:rgba(255,255,255,.86);color:#8a7a4a;font-size:13px;line-height:22px;padding:0;cursor:pointer}
+.tray-cell.on .tray-star{background:var(--accent);color:#fff}

@@ -98,7 +98,21 @@
       img.loading = 'lazy';
       img.title = (p.name || '') + ' — 点一下删掉（可撤销）';
       img.onclick = function () { deletePhoto(p); };
-      el.tray.appendChild(img);
+      var wrap = document.createElement('div');
+      wrap.className = 'tray-cell' + (p.starred ? ' on' : '');
+      var star = document.createElement('button');
+      star.className = 'tray-star';
+      star.type = 'button';
+      star.title = p.starred ? '已设为主视觉，点一下取消' : '设为主视觉（排版优先用它当大幅）';
+      star.textContent = p.starred ? '★' : '☆';
+      star.onclick = function (e) {
+        e.stopPropagation();
+        p.starred = !p.starred;
+        try { localStorage.setItem('memento.stars.v1', JSON.stringify(state.photos.filter(function (x) { return x.starred; }).map(function (x) { return x.name || ''; }))); } catch (err) {}
+        buildTray(); rebuild();
+      };
+      wrap.appendChild(img); wrap.appendChild(star);
+      el.tray.appendChild(wrap);
     });
   }
 
