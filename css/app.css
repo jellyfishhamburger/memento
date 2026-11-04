@@ -181,27 +181,27 @@ body.solo-mode .pages{display:block}
 body.solo-mode .page-wrap{margin:0}
 
 /* ---------- grid (九宫格) ---------- */
-.grid-panel{display:flex;flex-direction:column;gap:16px;max-width:1160px}
+.grid-panel{display:flex;flex-direction:column;gap:16px;max-width:1120px}
 .grid-head{max-width:52ch}
 .grid-title{margin:0;font-family:var(--serif);font-size:22px;font-weight:400;letter-spacing:-.01em}
 .grid-note{margin:6px 0 0;font-size:12.5px;color:var(--muted)}
-.grid-body{display:grid;grid-template-columns:auto 1fr;gap:36px;align-items:start;margin-top:4px}
-.grid9{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:#fff;padding:4px;width:min(512px,82vw)}
+.grid-body{display:grid;grid-template-columns:auto 300px;gap:44px;align-items:start;margin-top:4px}
+.grid9{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:#fff;padding:4px}
 .grid-cell{position:relative;line-height:0}
 .grid-btn{border:0;padding:0;background:transparent;display:block;cursor:zoom-in;width:100%}
 .grid-num{
-  position:absolute;left:6px;bottom:5px;font-size:10px;letter-spacing:.12em;color:#fff;
-  font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.65);pointer-events:none;
+  position:absolute;left:7px;bottom:6px;font-size:10.5px;letter-spacing:.12em;color:#fff;
+  font-variant-numeric:tabular-nums;pointer-events:none;mix-blend-mode:difference;
 }
 .grid-side{display:flex;flex-direction:column;gap:10px;padding-top:2px}
-.grid-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;max-width:420px}
+.grid-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .strip-cell{position:relative;line-height:0}
 .strip-cell img{width:100%;aspect-ratio:1;object-fit:cover;display:block;border:1px solid var(--line)}
 .strip-cell b{
   position:absolute;top:3px;left:4px;font-size:9px;font-weight:500;color:#fff;
   text-shadow:0 1px 3px rgba(0,0,0,.7);letter-spacing:.08em;
 }
-.grid-why{margin:6px 0 0;font-size:12.5px;color:var(--muted);max-width:34ch;line-height:1.65}
+.grid-why{margin:6px 0 0;font-size:12.5px;color:var(--muted);max-width:30ch;line-height:1.65}
 
 @media (max-width:900px){
   .bar{height:auto;flex-wrap:wrap;padding:8px 12px;gap:8px}
@@ -212,5 +212,7 @@ body.solo-mode .page-wrap{margin:0}
   .tray{max-height:96px;grid-template-columns:repeat(8,1fr)}
   .stage{padding:14px 12px 40px}
   .pages{gap:18px 14px !important}
+  .grid-body{grid-template-columns:1fr;gap:22px}
+  .grid-strip{grid-template-columns:repeat(5,1fr);max-width:420px}
   .stat{display:none}
 }

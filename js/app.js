@@ -263,8 +263,11 @@
 
     el.gridWrap.innerHTML = '';
     el.gridWrap.dataset.layout = g.layout.key;
-    var boxW = 504;
-    var cell = Math.floor((boxW - 2 * 4) / 3);
+    var stageW = el.gridPanel.clientWidth || 1080;
+    var sideW = stageW > 820 ? 300 + 44 : 0;
+    var box = Math.max(320, Math.min(720, stageW - sideW));
+    var cell = Math.floor((box - 8) / 3);
+    el.gridWrap.style.width = (cell * 3 + 8) + 'px';
     g.tiles.forEach(function (t, i) {
       var cellEl = document.createElement('div');
       cellEl.className = 'grid-cell';
