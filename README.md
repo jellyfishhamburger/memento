@@ -199,3 +199,11 @@ python -m http.server 8770    # 起本地服务，示例图才读得到
 界面：左栏「排版引擎」切换 经典 / 艺术指导；切到艺术指导后出现「这本书为什么这样排」面板，逐条列出决策与依据。
 
 对照实验产物：`Desktop/MEMENTO_艺术指导实验/`（两本书的页面、对照图、报告.md）。
+
+## S3 · 语义观察与编辑关系（实验，未接入）
+
+`js/observe.js` 是独立模块：`M.OBS.sample / observeAll / relations / sequences`。
+模型（本地 qwen2.5vl）只负责看单张图描述，关系由代码结合 S1 实测数据计算，每条附「另一种解释」。
+不写 direction token、不改排版、可整体不调用。
+
+实验产物：`Desktop/MEMENTO_S3实验/`（报告.md + 关系图谱.html）。

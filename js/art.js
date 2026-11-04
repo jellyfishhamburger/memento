@@ -681,5 +681,5 @@ window.MEM = window.MEM || {};
     return false;
   }
 
-  M.ART = { profile: profile, direction: direction, compose: compose, FAMILIES: FAMILIES, gridOf: gridOf };
+  M.ART = { profile: profile, direction: direction, compose: compose, FAMILIES: FAMILIES, gridOf: gridOf, finger: finger };
 })(window.MEM);
