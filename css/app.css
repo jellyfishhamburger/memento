@@ -260,13 +260,23 @@ body.solo-mode .page-wrap{margin:0}
 .picker-head .btn-danger{margin-right:8px;flex:none}
 
 /* crop adjuster inside the picker */
-.picker-crop{display:flex;align-items:center;gap:16px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.picker-crop{display:flex;align-items:center;gap:16px;padding:14px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .crop-box{
   position:relative;overflow:hidden;background:#111;flex:none;cursor:grab;
   box-shadow:0 0 0 1px rgba(0,0,0,.15);touch-action:none;
 }
 .crop-box.dragging{cursor:grabbing}
 .crop-box img{position:absolute;user-select:none;pointer-events:none;max-width:none}
+/* the fold of a cross-page image: the picture is one, the line is where it is cut */
+.crop-seam{
+  position:absolute;top:0;bottom:0;width:1px;pointer-events:none;
+  background:repeating-linear-gradient(to bottom,rgba(255,255,255,.92) 0 5px,transparent 5px 10px);
+  box-shadow:0 0 0 1px rgba(0,0,0,.35);
+}
+.crop-seam::after{
+  content:"折线";position:absolute;left:3px;top:4px;font-size:9px;letter-spacing:.08em;
+  color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.8);font-style:normal;white-space:nowrap;
+}
 .crop-hint{margin:0;font-size:12px;color:var(--muted);max-width:30ch;line-height:1.6}
 .picker-actions{display:flex;gap:8px;padding:0 18px 16px;grid-column:1/-1;margin-top:4px}
 .btn-danger{border-color:#9d3a2a;color:#9d3a2a}

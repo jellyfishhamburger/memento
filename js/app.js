@@ -214,7 +214,7 @@
     var z = state.zine;
     if (!z || !z.pages.length) return;
     el.zineList.innerHTML = '';
-    var stageW = el.zineList.clientWidth || 1000;
+    var stageW = (el.zineList.clientWidth || 1000) - 56;   // leave room for the lock tools beside the pages
     var pair = z.pair;
     var scale = Math.min((stageW - 6) / (pair ? 2 * z.pages[0].w : z.pages[0].w), 500 / z.pages[0].h);
 
@@ -328,26 +328,95 @@
     return Math.abs(Math.log((photo.ar || 1) / slotAR));
   }
 
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  /* A cross-page image is one photo cut into two frames at the fold. Both halves
+     come from a single crop, so editing one has to move the other — otherwise the
+     picture tears down the middle. Returns the pair ordered left page → right page. */
+  function foldPair(pi, fi) {
+    var pg = state.zine.pages[pi];
+    var fr = pg && pg.frames[fi];
+    if (!fr || fr.role !== 'fold') return null;
+    var found = null;
+    [pi - 1, pi + 1].forEach(function (pj) {
+      var q = state.zine.pages[pj];
+      if (found || !q) return;
+      q.frames.forEach(function (f, fj) {
+        if (found || f.photo !== fr.photo || f.role !== 'fold') return;
+        if (Math.abs(f.h - fr.h) > 2 || Math.abs(f.y - fr.y) > 2) return;
+        if (pj === pi + 1 && f.x > 1) return;              // right half starts at the fold
+        if (pj === pi - 1 && f.x + f.w < q.w - 1) return;  // left half ends at the edge
+        found = pj === pi + 1
+          ? { aPi: pi, aFi: fi, bPi: pj, bFi: fj }
+          : { aPi: pj, aFi: fj, bPi: pi, bFi: fi };
+      });
+    });
+    return found;
+  }
+
+  /* the crop both halves are cut from, rebuilt from what is on the frames */
+  function sharedCrop(A, B) {
+    return { sx: A.crop.sx, sy: A.crop.sy, sw: A.crop.sw + B.crop.sw, sh: A.crop.sh };
+  }
+
+  function writeSharedCrop(A, B, full) {
+    var fa = A.w / (A.w + B.w);
+    A.crop = { sx: full.sx, sy: full.sy, sw: full.sw * fa, sh: full.sh };
+    B.crop = { sx: full.sx + full.sw * fa, sy: full.sy, sw: full.sw * (1 - fa), sh: full.sh };
+    var f = { x: (full.sx + full.sw / 2) / A.photo.w, y: (full.sy + full.sh / 2) / A.photo.h };
+    A.focal = B.focal = f;
+  }
+
+  function setPairPhoto(A, B, photo) {
+    var totalW = A.w + B.w;
+    var full = M.cropFor(photo, totalW, A.h);
+    A.photo = B.photo = photo;
+    writeSharedCrop(A, B, full);
+    A.focal = B.focal = null;   // a fresh photo starts from its own focal point
+  }
+
+  function setPhotoAt(pi, fi, photo) {
+    var pair = foldPair(pi, fi);
+    if (pair) {
+      setPairPhoto(state.zine.pages[pair.aPi].frames[pair.aFi], state.zine.pages[pair.bPi].frames[pair.bFi], photo);
+    } else {
+      setFramePhoto(state.zine.pages[pi].frames[fi], photo);
+    }
+  }
+
   function openEditor(pi, fi) {
     var page = state.zine.pages[pi];
     if (!page || !page.frames[fi]) return;
     var fr = page.frames[fi];
     editTarget = { pi: pi, fi: fi };
-    var slotAR = (fr.w - fr.pad * 2) / (fr.h - fr.pad * 2);
     var cur = fr.photo;
     var usage = frameUsage();
 
-    el.pickerTitle.textContent = (pi === 0 ? '封面' : '第 ' + pi + ' 页') + ' · 第 ' + (fi + 1) + ' 张';
+    var pair = foldPair(pi, fi);
+    var A = pair ? state.zine.pages[pair.aPi].frames[pair.aFi] : null;
+    var B = pair ? state.zine.pages[pair.bPi].frames[pair.bFi] : null;
+    var spreadW = pair ? A.w + B.w : 0;
+    var shared = pair ? sharedCrop(A, B) : null;
+
+    // one photo across two pages is judged (and cropped) as the whole spread
+    var slotAR = pair ? spreadW / A.h : (fr.w - fr.pad * 2) / (fr.h - fr.pad * 2);
+
+    el.pickerTitle.textContent = pair
+      ? '跨页 ' + pad2(pair.aPi + 1) + '—' + pad2(pair.bPi + 1) + ' · 一整张'
+      : (pi === 0 ? '封面' : '第 ' + pi + ' 页') + ' · 第 ' + (fi + 1) + ' 张';
 
     var cands = state.photos.filter(function (p) { return p !== cur; });
     cands.sort(function (a, b) { return arLoss(a, slotAR) - arLoss(b, slotAR); });
     var lossList = cands.map(function (p) { return arLoss(p, slotAR); }).sort(function (a, b) { return b - a; });
     var cutLine = lossList.length > 3 ? lossList[2] : Infinity;
 
-    el.pickerNote.textContent = '点一张就换进来；已经在别的页的，跟那一张互换。下面可以拖动画面选显示的部分。';
+    el.pickerNote.textContent = pair
+      ? '这一张横跨两页：拖动是整幅一起移，折线处按两页各自的宽窄自动裁，不会两页各裁一刀。'
+      : '点一张就换进来；已经在别的页的，跟那一张互换。下面可以拖动画面选显示的部分。';
 
     // crop adjuster
-    var boxW = 220, boxH = Math.round(boxW / slotAR);
+    var boxW = Math.round(Math.min(pair ? 340 : 220, window.innerWidth * 0.78));
+    var boxH = Math.round(boxW / slotAR);
     el.cropBox.style.width = boxW + 'px';
     el.cropBox.style.height = boxH + 'px';
     el.cropBox.innerHTML = '';
@@ -355,10 +424,23 @@
     img.src = cur.url; img.alt = '';
     img.style.position = 'absolute';
     el.cropBox.appendChild(img);
+    if (pair) {
+      // the fold: left of the line is page a, right of it is page b
+      var seam = document.createElement('i');
+      seam.className = 'crop-seam';
+      seam.style.left = Math.round(boxW * A.w / spreadW) + 'px';
+      el.cropBox.appendChild(seam);
+    }
+    var hint = document.querySelector('#pickerCrop .crop-hint');
+    if (hint) {
+      hint.textContent = pair
+        ? '左右拖动 = 整幅影像一起移；虚线是两个页码的交界，线两边永远是同一张图。'
+        : '左右上下拖动，选这一段显示。';
+    }
     el.pickerCrop.hidden = false;
 
     function paintCrop() {
-      var c = fr.crop;
+      var c = shared || fr.crop;
       var k = boxW / c.sw;
       img.style.width = (cur.w * k) + 'px';
       img.style.height = (cur.h * k) + 'px';
@@ -369,28 +451,39 @@
 
     var drag = null;
     el.cropBox.onpointerdown = function (ev) {
-      drag = { x: ev.clientX, y: ev.clientY, focal: focalOf(fr) };
+      drag = shared
+        ? { x: ev.clientX, y: ev.clientY, sx: shared.sx, sy: shared.sy }
+        : { x: ev.clientX, y: ev.clientY, focal: focalOf(fr) };
       el.cropBox.setPointerCapture(ev.pointerId);
       el.cropBox.classList.add('dragging');
     };
     el.cropBox.onpointermove = function (ev) {
       if (!drag) return;
-      var k = boxW / fr.crop.sw;
-      var dfx = -(ev.clientX - drag.x) / k / cur.w;
-      var dfy = -(ev.clientY - drag.y) / k / cur.h;
-      fr.focal = {
-        x: Math.max(0.05, Math.min(0.95, drag.focal.x + dfx)),
-        y: Math.max(0.05, Math.min(0.95, drag.focal.y + dfy))
-      };
-      fr.crop = M.cropFor(cur, fr.w - fr.pad * 2, fr.h - fr.pad * 2, fr.focal);
+      if (shared) {
+        var kk = boxW / shared.sw;
+        shared.sx = clamp(drag.sx - (ev.clientX - drag.x) / kk, 0, Math.max(0, cur.w - shared.sw));
+        shared.sy = clamp(drag.sy - (ev.clientY - drag.y) / kk, 0, Math.max(0, cur.h - shared.sh));
+        writeSharedCrop(A, B, shared);       // both halves move together, always contiguous
+      } else {
+        var k = boxW / fr.crop.sw;
+        var dfx = -(ev.clientX - drag.x) / k / cur.w;
+        var dfy = -(ev.clientY - drag.y) / k / cur.h;
+        fr.focal = {
+          x: Math.max(0.05, Math.min(0.95, drag.focal.x + dfx)),
+          y: Math.max(0.05, Math.min(0.95, drag.focal.y + dfy))
+        };
+        fr.crop = M.cropFor(cur, fr.w - fr.pad * 2, fr.h - fr.pad * 2, fr.focal);
+      }
       paintCrop();
     };
-    el.cropBox.onpointerup = function () {
+    function endDrag() {
       if (!drag) return;
       drag = null;
       el.cropBox.classList.remove('dragging');
       paintZine();
-    };
+    }
+    el.cropBox.onpointerup = endDrag;
+    el.cropBox.onpointercancel = endDrag;
 
     el.pickerGrid.innerHTML = '';
     cands.forEach(function (p) {
@@ -446,10 +539,10 @@
     if (target === cur) { closePicker(); return; }
     var from = null;
     state.zine.pages.forEach(function (p, pj) {
-      p.frames.forEach(function (f, fj) { if (f.photo === target) from = { pj: pj, fj: fj }; });
+      p.frames.forEach(function (f, fj) { if (f.photo === target) from = { pi: pj, fi: fj }; });
     });
-    setFramePhoto(fr, target);
-    if (from) setFramePhoto(state.zine.pages[from.pj].frames[from.fj], cur);
+    setPhotoAt(t.pi, t.fi, target);          // a cross-page frame takes both halves with it
+    if (from) setPhotoAt(from.pi, from.fi, cur);
     closePicker();
     paintZine();
     toast(from ? '两张互换了位置' : '换好了');
