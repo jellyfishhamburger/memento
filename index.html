@@ -134,6 +134,19 @@
 </div>
 
 <input type="file" id="fileInput" accept="image/*" multiple hidden>
+<div id="saved" class="saved" hidden>
+  <div class="saved-card">
+    <div class="saved-head">
+      <div>
+        <h2 id="savedTitle" class="saved-title">已经做好九张</h2>
+        <p id="savedNote" class="saved-note"></p>
+      </div>
+      <button id="savedClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div id="savedGrid" class="saved-grid"></div>
+  </div>
+</div>
+
 <div id="toast" class="toast" hidden></div>
 
 <script src="js/analyze.js"></script>

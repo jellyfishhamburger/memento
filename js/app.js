@@ -44,7 +44,9 @@
     picker: $('#picker'), pickerGrid: $('#pickerGrid'), pickerTitle: $('#pickerTitle'),
     pickerNote: $('#pickerNote'), pickerClose: $('#pickerClose'),
     pickerCrop: $('#pickerCrop'), cropBox: $('#cropBox'),
-    toast: $('#toast')
+    toast: $('#toast'),
+    saved: $('#saved'), savedGrid: $('#savedGrid'), savedNote: $('#savedNote'),
+    savedTitle: $('#savedTitle'), savedClose: $('#savedClose')
   };
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -727,19 +729,45 @@
   async function doExport(kind) {
     if (state.busy || !state.zine || !state.zine.pages.length) return;
     state.busy = true;
-    toast(kind === 'pdf' ? '正在生成 PDF…' : '正在导出…');
+    toast(kind === 'pdf' ? '正在生成 PDF…' : '正在打包九张…');
     try {
       if (kind === 'pdf') {
         var bytes = await M.exportPDF(state.zine.pages, state.title);
         toast('PDF 已生成 · ' + Math.round(bytes / 1024) + ' KB');
       } else {
-        var n = await M.exportPNG(state.zine.pages, state.title);
-        toast('已导出 ' + n + ' 张 · 1080×1440（浏览器可能询问是否允许多文件下载）');
+        var r = await M.exportZIP(state.zine.pages, state.title);
+        openSaved(r);
       }
     } catch (err) {
       toast('导出失败：' + (err && err.message ? err.message : err));
     }
     state.busy = false;
+  }
+
+  /* the finished pages, so she can also save them one by one on a phone */
+  function openSaved(result) {
+    var pages = state.zine.pages;
+    var urls = M.pageDataURLs(pages, 1);
+    var base = (state.title || 'memento').replace(/[\/:*?"<>|\s]+/g, '_');
+    el.savedTitle.textContent = '九张都在这里';
+    el.savedNote.innerHTML = '已经下载：<b>' + result.name + '</b>（约 ' + Math.round(result.size / 1024) + ' KB，解压后 ' +
+      pages.length + ' 张 ' + result.px + ' JPG）。<br>手机没有下载文件夹的话：点开任意一张 → 长按 → 存储图像。';
+    el.savedGrid.innerHTML = '';
+    urls.forEach(function (u, i) {
+      var a = document.createElement('a');
+      a.className = 'saved-item';
+      a.href = u;
+      a.download = base + '_' + String(i + 1).padStart(2, '0') + '.jpg';
+      a.target = '_blank';
+      a.rel = 'noopener';
+      var im = document.createElement('img');
+      im.src = u; im.alt = '第 ' + (i + 1) + ' 张';
+      var n = document.createElement('span');
+      n.textContent = String(i + 1).padStart(2, '0');
+      a.appendChild(im); a.appendChild(n);
+      el.savedGrid.appendChild(a);
+    });
+    el.saved.hidden = false;
   }
 
   /* ---------------- toast ---------------- */
@@ -787,6 +815,8 @@
     rebuild();
   };
   el.pickerClose.onclick = closePicker;
+  el.savedClose.onclick = function () { el.saved.hidden = true; };
+  el.saved.addEventListener('click', function (e) { if (e.target === el.saved) el.saved.hidden = true; });
   el.picker.addEventListener('click', function (e) { if (e.target === el.picker) closePicker(); });
   el.lbClose.onclick = closeLightbox;
   el.lbPrev.onclick = function () {
@@ -837,7 +867,9 @@
   var manifest = null;
   try {
     var qs = new URLSearchParams(location.search);
-    if (qs.get('mode') && 'ABC'.indexOf(qs.get('mode')) >= 0) state.mode = qs.get('mode');
+    var mp = qs.get('mode');
+    if (mp && 'ABC'.indexOf(mp) >= 0) state.mode = mp;
+    else if (mp === 'zine' || mp === 'grid' || mp === 'book') state.mode = 'C';   // old links
     if (qs.get('scheme')) state.scheme = parseInt(qs.get('scheme'), 10) || 0;
     if (qs.get('count')) state.count = parseInt(qs.get('count'), 10) === 11 ? 11 : 9;
     if (qs.get('title')) { state.title = qs.get('title'); el.title.value = state.title; }

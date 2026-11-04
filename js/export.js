@@ -26,17 +26,100 @@ window.MEM = window.MEM || {};
     });
   }
 
-  M.exportPNG = async function (pages, title, opt) {
+  /* ---------- one file, one download: a zip of the pages ----------
+     Nine separate downloads get blocked by the browser (and are worse on iOS),
+     so the book leaves as a single .zip. */
+  var CRC = (function () {
+    var t = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(buf) {
+    var c = 0xFFFFFFFF;
+    for (var i = 0; i < buf.length; i++) c = CRC[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function u16(v) { return [v & 255, (v >>> 8) & 255]; }
+  function u32(v) { return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; }
+  function dosTime(d) {
+    return {
+      time: ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF,
+      date: (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF
+    };
+  }
+
+  function makeZip(files) {          // files: [{name, bytes}]
+    var enc = new TextEncoder();
+    var stamp = dosTime(new Date());
+    var parts = [], central = [], offset = 0;
+    files.forEach(function (f) {
+      var name = enc.encode(f.name);
+      var crc = crc32(f.bytes);
+      var head = [].concat(
+        u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(stamp.time), u16(stamp.date),
+        u32(crc), u32(f.bytes.length), u32(f.bytes.length), u16(name.length), u16(0)
+      );
+      parts.push(new Uint8Array(head), name, f.bytes);
+      central.push({ name: name, crc: crc, size: f.bytes.length, offset: offset });
+      offset += head.length + name.length + f.bytes.length;
+    });
+    var cdStart = offset, cdSize = 0;
+    var cdParts = [];
+    central.forEach(function (c) {
+      var h = [].concat(
+        u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(stamp.time), u16(stamp.date),
+        u32(c.crc), u32(c.size), u32(c.size), u16(c.name.length), u16(0), u16(0),
+        u16(0), u16(0), u32(0), u32(c.offset)
+      );
+      cdParts.push(new Uint8Array(h), c.name);
+      cdSize += h.length + c.name.length;
+    });
+    var end = new Uint8Array([].concat(
+      u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length),
+      u32(cdSize), u32(cdStart), u16(0)
+    ));
+    return new Blob(parts.concat(cdParts, [end]), { type: 'application/zip' });
+  }
+
+  function canvasBytes(cv, type, q) {
+    return new Promise(function (res) {
+      cv.toBlob(function (b) {
+        if (!b) { res(null); return; }
+        b.arrayBuffer().then(function (ab) { res(new Uint8Array(ab)); });
+      }, type, q);
+    });
+  }
+
+  M.exportZIP = async function (pages, title, opt) {
+    /* returns the blob plus what it contains, so the UI can say the truth */
     opt = opt || {};
-    var scale = opt.scale || 2;
+    var scale = opt.scale || 1;   // 1080x1440: the size a social platform wants
     var base = safeName(title);
+    var files = [];
     for (var i = 0; i < pages.length; i++) {
       var cv = M.pageToCanvas(pages[i], scale);
-      var blob = await canvasBlob(cv, 'image/png');
-      save(blob, base + '_' + String(i + 1).padStart(2, '0') + '.png');
-      await new Promise(function (r) { setTimeout(r, 260); });
+      var bytes = await canvasBytes(cv, 'image/jpeg', 0.94);
+      if (!bytes) throw new Error('第 ' + (i + 1) + ' 页渲染失败');
+      files.push({ name: base + '_' + String(i + 1).padStart(2, '0') + '.jpg', bytes: bytes });
     }
-    return pages.length;
+    var zip = makeZip(files);
+    var fname = base + '_' + pages.length + '张.zip';
+    save(zip, fname);
+    return {
+      count: pages.length, name: fname, size: zip.size, blob: zip,
+      px: Math.round(pages[0].w * scale) + '×' + Math.round(pages[0].h * scale)
+    };
+  };
+
+  /* every page as a data URL, for the save-one-by-one sheet (phones) */
+  M.pageDataURLs = function (pages, scale) {
+    return pages.map(function (pg) {
+      return M.pageToCanvas(pg, scale || 1).toDataURL('image/jpeg', 0.92);
+    });
   };
 
   /* ---------- minimal PDF ---------- */

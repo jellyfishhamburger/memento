@@ -365,3 +365,16 @@ body.solo-mode .page-wrap{margin:0}
 .tray-star{position:absolute;right:2px;top:2px;width:22px;height:22px;border:0;border-radius:50%;
   background:rgba(255,255,255,.86);color:#8a7a4a;font-size:13px;line-height:22px;padding:0;cursor:pointer}
 .tray-cell.on .tray-star{background:var(--accent);color:#fff}
+
+/* ---------- the finished sheet ---------- */
+.saved{position:fixed;inset:0;background:rgba(20,18,14,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px}
+.saved-card{background:var(--paper);width:min(880px,100%);max-height:88vh;display:flex;flex-direction:column;border-radius:3px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+.saved-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:20px 22px 14px;border-bottom:1px solid var(--line)}
+.saved-title{margin:0 0 6px;font-size:16px;font-weight:500;letter-spacing:.01em}
+.saved-note{margin:0;font-size:12px;line-height:1.7;color:var(--muted);max-width:56ch}
+.saved-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:18px 22px 24px;overflow:auto}
+.saved-item{position:relative;display:block;line-height:0;background:var(--paper-2)}
+.saved-item img{width:100%;display:block}
+.saved-item span{position:absolute;left:6px;bottom:6px;font-size:9px;letter-spacing:.1em;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+.saved-item:hover img{opacity:.88}
+@media (max-width:900px){.saved-grid{grid-template-columns:repeat(2,1fr)}.saved{padding:0}.saved-card{max-height:100vh;height:100%;border-radius:0}}
