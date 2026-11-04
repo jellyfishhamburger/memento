@@ -1689,11 +1689,13 @@
     var stored = all.reduce(function (a, p) {
       return a + ((p.bytes && (p.bytes.preview + p.bytes.thumb)) || 0);
     }, 0);
-    el.plibCount.textContent = all.length + ' 张 · ' +
-      all.filter(function (p) { return p.starred; }).length + ' 张收藏 · ' +
-      (stored ? '这套照片 ' + (stored / 1024).toFixed(1) + ' MB' : '') +
-      (e ? ' · 本机已用 ' + (e.usage / 1048576).toFixed(1) + ' MB' : '') +
-      (e && e.quota ? ' / 可用 ' + (e.quota / 1073741824).toFixed(1) + ' GB' : '');
+    var bits = [all.length + ' 张'];
+    var starred = all.filter(function (p) { return p.starred; }).length;
+    if (starred) bits.push(starred + ' 张收藏');
+    if (stored) bits.push('这套 ' + (stored / 1024).toFixed(1) + ' MB');
+    if (e) bits.push('本机已用 ' + (e.usage / 1048576).toFixed(1) + ' MB' +
+      (e.quota ? ' / 可用 ' + (e.quota / 1073741824).toFixed(1) + ' GB' : ''));
+    el.plibCount.textContent = bits.join(' · ');
 
     el.plibGrid.innerHTML = '';
     if (!list.length) {
