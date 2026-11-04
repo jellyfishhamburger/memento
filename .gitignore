@@ -1,0 +1,4 @@
+_inspect/
+*.backup.html
+.DS_Store
+Thumbs.db

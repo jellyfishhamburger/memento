@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MEMENTO — 让照片变成一卷书</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">M</span>
+    <span class="wordmark">MEMENTO</span>
+  </div>
+  <input id="titleInput" class="title-input" value="十一月的海" aria-label="作品标题" spellcheck="false">
+  <div class="bar-spacer"></div>
+  <span id="statLine" class="stat">还没有照片</span>
+  <button id="btnImport" class="btn btn-ghost">导入照片</button>
+  <button id="btnTall" class="btn btn-ghost" disabled>导出长图</button>
+  <button id="btnPNG" class="btn btn-ghost" disabled>导出图片</button>
+  <button id="btnPDF" class="btn btn-primary" disabled>导出 PDF</button>
+</header>
+
+<main class="shell">
+  <aside class="rail">
+    <section class="rail-block">
+      <div class="seg" id="modes" role="group" aria-label="模式">
+        <button type="button" data-mode="book" aria-pressed="true">作品集</button>
+        <button type="button" data-mode="grid" aria-pressed="false">九宫格</button>
+      </div>
+    </section>
+
+    <section class="rail-block" id="blockStyles">
+      <h2 class="rail-title">风格</h2>
+      <div id="styles" class="opt-list"></div>
+    </section>
+
+    <section class="rail-block" id="blockGrid">
+      <h2 class="rail-title">九张版式</h2>
+      <div id="layouts" class="opt-list"></div>
+    </section>
+
+    <section class="rail-block">
+      <h2 class="rail-title">编排方案</h2>
+      <div id="plans" class="opt-list opt-list--tight"></div>
+    </section>
+
+    <section class="rail-block" id="blockFormat">
+      <h2 class="rail-title">页幅</h2>
+      <div id="formats" class="seg" role="group"></div>
+    </section>
+
+    <section class="rail-block">
+      <h2 class="rail-title">照片</h2>
+      <p class="rail-note">点一张可以把它从这一版里拿掉。</p>
+      <div id="tray" class="tray"></div>
+    </section>
+
+    <div class="rail-foot">
+      <button id="btnShuffle" class="btn btn-primary btn-wide" disabled>换一版编排</button>
+    </div>
+  </aside>
+
+  <section class="stage">
+    <div id="empty" class="empty">
+      <p class="empty-kicker">先给四十张照片，它替你挑不出错的那几页</p>
+      <h1 class="empty-title">把照片扔进来</h1>
+      <p class="empty-sub">本地处理，不上传。选好之后自动排出跨页、留白、图版编号与取色条。</p>
+      <div class="empty-actions">
+        <button class="btn btn-primary" id="btnPick">选择照片</button>
+        <button class="btn btn-ghost" id="btnDemo">先用示例照片看看</button>
+      </div>
+    </div>
+    <div id="pages" class="pages" hidden></div>
+    <div id="gridPanel" class="grid-panel" hidden>
+      <div class="grid-head">
+        <h1 class="grid-title">九宫格</h1>
+        <p id="gridNote" class="grid-note"></p>
+      </div>
+      <div class="grid-body">
+        <div id="gridWrap" class="grid9"></div>
+        <div class="grid-side">
+          <h2 class="rail-title">选中的九张</h2>
+          <div id="gridStrip" class="grid-strip"></div>
+          <p id="gridWhy" class="grid-why"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="lightbox" class="lightbox" hidden>
+  <button class="lb-close" id="lbClose" aria-label="关闭">✕</button>
+  <div class="lb-nav">
+    <button id="lbPrev" aria-label="上一页">‹</button>
+    <span id="lbCount"></span>
+    <button id="lbNext" aria-label="下一页">›</button>
+  </div>
+  <div id="lbStage" class="lb-stage"></div>
+</div>
+
+<input type="file" id="fileInput" accept="image/*" multiple hidden>
+<div id="toast" class="toast" hidden></div>
+
+<script src="js/analyze.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/grid.js"></script>
+<script src="js/render.js"></script>
+<script src="js/export.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
