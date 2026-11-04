@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""MEMENTO 本地服务：静态文件 + Ollama 同源代理。
+"""MEMENTO 本地版：静态文件 + Ollama 同源代理。
 
 为什么需要它：
   线上版是 https，浏览器禁止 https 页面访问 http://127.0.0.1:11434
@@ -8,8 +8,10 @@
   这里把网页和 /ai/* 代理放在同一个 http://127.0.0.1 下，
   同源就不存在 CORS，也不存在混合内容。
 
-用法：  python serve.py            # 默认 8899
-        PORT=9000 python serve.py
+端口：默认自动挑 8901-8919 里第一个空的（8899 常被别的项目占着）。
+      想固定就 set PORT=8900 再运行。
+
+用法：  python serve.py
 """
 import http.server
 import json
@@ -19,7 +21,8 @@ import sys
 import urllib.error
 import urllib.request
 
-PORT = int(os.environ.get("PORT", "8899"))
+WANT_PORT = int(os.environ.get("PORT", "0"))     # 0 = auto
+PORT_RANGE = list(range(8901, 8920))
 OLLAMA = os.environ.get("OLLAMA", "http://127.0.0.1:11434").rstrip("/")
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -72,7 +75,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._cors()
             self.end_headers()
             self.wfile.write(data)
-        except Exception as e:  # Ollama 没开、端口不通
+        except Exception as e:                       # Ollama 没开、端口不通
             self._json(502, {
                 "error": "连不上本地 Ollama（%s）：%s" % (OLLAMA, e),
                 "hint": "另开一个窗口运行：ollama serve",
@@ -106,13 +109,32 @@ class Server(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
 
+def pick_server():
+    """8899 常被别人占着，所以自己找一个空的。"""
+    tries = ([WANT_PORT] if WANT_PORT else []) + PORT_RANGE
+    for p in tries:
+        try:
+            return Server(("127.0.0.1", p), Handler), p
+        except OSError:
+            continue
+    raise SystemExit("没有可用端口（8901-8919 都被占了）")
+
+
 if __name__ == "__main__":
     os.chdir(ROOT)
-    with Server(("127.0.0.1", PORT), Handler) as httpd:
-        print("MEMENTO 本地版: http://127.0.0.1:%d/" % PORT)
-        print("Ollama 代理:   http://127.0.0.1:%d/ai/api/tags" % PORT)
-        print("按 Ctrl+C 停止")
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\n已停止")
+    httpd, port = pick_server()
+    url = "http://127.0.0.1:%d/" % port
+    print("=" * 48)
+    print("  MEMENTO 本地版：%s" % url)
+    print("  Ollama 代理：  %sai/api/tags" % url)
+    print("=" * 48)
+    print("  保持这个窗口开着；按 Ctrl+C 停止")
+    try:
+        import webbrowser
+        webbrowser.open(url)
+    except Exception:
+        pass
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\n已停止")
