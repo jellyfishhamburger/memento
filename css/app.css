@@ -267,7 +267,7 @@ body.solo-mode .page-wrap{margin:0}
 .zine-head{max-width:56ch}
 .zine-list{display:flex;flex-direction:column;gap:30px}
 .spread-row{display:flex;gap:2px;align-items:flex-start;position:relative}
-.spread-row--single{margin-left:0}
+.spread-row--single{align-items:flex-start}
 .spread-label{
   position:absolute;left:0;top:-17px;font-size:10.5px;letter-spacing:.12em;color:var(--faint);
   font-variant-numeric:tabular-nums;
