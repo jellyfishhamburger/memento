@@ -328,3 +328,6 @@ body.solo-mode .page-wrap{margin:0}
 .row-tools{flex:0 0 auto;white-space:nowrap}
 .lock-btn{white-space:nowrap;flex:none}
 .spread-row--single .page-btn{background:transparent}
+
+.spread-row .page-btn{width:auto}
+.spread-row .page-wrap{overflow:hidden}

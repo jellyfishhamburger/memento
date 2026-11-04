@@ -106,7 +106,7 @@ window.MEM = window.MEM || {};
       if (t.tracking) d.style.letterSpacing = t.tracking + 'px';
       if (t.opacity != null) d.style.opacity = t.opacity;
       if (t.rot) d.style.transform = 'rotate(' + t.rot + 'deg)';
-      d.textContent = t.lines.join('\n');
+      d.textContent = wrapLines(t).join('\n');
       d.style.zIndex = 4;
       root.appendChild(d);
     });

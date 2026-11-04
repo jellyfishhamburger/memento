@@ -422,7 +422,7 @@ window.MEM = window.MEM || {};
     var k = 1;
     if (top + total > floor) k = Math.max(0.45, (floor - top) / total);
 
-    var y = top, i = 0;
+    var y = top, i = 0, firstFrame = pg.frames.length;
     spec.rows.forEach(function (row, ri) {
       var indent = (spec.indent && spec.indent[ri]) || 0;
       var c = indent, placed = [];
@@ -442,20 +442,28 @@ window.MEM = window.MEM || {};
       });
       y += maxRows[ri] * k + rowGap;
     });
+    // a wall that stops well above the foot gets set down, not left hanging
+    var used = (y - rowGap) - top;
+    var slack = floor - top - used;
+    if (slack > (floor - top) * 0.12) {
+      var shift = slack * 0.42;
+      for (var fi = firstFrame; fi < pg.frames.length; fi++) pg.frames[fi].y += shift;
+      y += shift;
+    }
     return y;
   }
 
   COMP['z-wall'] = {
-    name: '墙 · 五张', mode: 'C', n: 10, page: 2,
+    name: '墙 · 六张', mode: 'C', n: 12, page: 2,
     build: function (photos, o) {
       var a = page(), b = page();
       a.texts.push(txt({ x: cx(0), y: 96, w: cw(5), size: 11, track: 4, color: PAPER.muted, text: o.plate + ' — ' + o.title }));
-      wall(a, photos.slice(0, 5), {
+      wall(a, photos.slice(0, 6), {
         rows: [[6, 6], [4, 4, 4], [7]],
         shapes: [[1.42, 1.0], [1.1, 0.95, 1.3], [1.5]],
         indent: [0, 0, 2]
       }, { y: 150 });
-      wall(b, photos.slice(5, 10), {
+      wall(b, photos.slice(6, 12), {
         rows: [[5, 7], [4, 4, 4], [8]],
         shapes: [[1.0, 1.42], [1.35, 1.0, 1.1], [1.42]],
         indent: [0, 1, 1]
@@ -465,17 +473,17 @@ window.MEM = window.MEM || {};
   };
 
   COMP['z-wall-air'] = {
-    name: '墙 · 三张带白', mode: 'C', n: 6, page: 2,
+    name: '墙 · 带白', mode: 'C', n: 5, page: 2,
     build: function (photos, o) {
       var a = page(), b = page();
       a.texts.push(txt({ x: cx(0), y: 260, w: cw(8), size: 44, family: SERIF, lineHeight: 1.36, text: o.line }));
       a.texts.push(txt({ x: cx(0), y: 470, w: cw(4), size: 11, track: 4, color: PAPER.muted, text: o.plate }));
-      wall(a, photos.slice(0, 3), {
+      wall(a, photos.slice(0, 2), {
         rows: [[5], [7]],
-        shapes: [[0.72], [1.42]],
+        shapes: [[0.9], [1.42]],
         indent: [0, 3]
       }, { y: 560 });
-      wall(b, photos.slice(3, 6), {
+      wall(b, photos.slice(2, 5), {
         rows: [[4, 4], [9]],
         shapes: [[0.7, 1.5], [1.42]],
         indent: [2, 0]
@@ -485,13 +493,13 @@ window.MEM = window.MEM || {};
   };
 
   COMP['z-hero-wall'] = {
-    name: '主图 + 一墙', mode: 'C', n: 9, page: 2,
+    name: '主图 + 一墙', mode: 'C', n: 8, page: 2,
     build: function (photos, o) {
       var a = page(), b = page();
       a.frames.push({ photo: photos[0], x: 0, y: 0, w: PW, h: PH, pad: 0, role: 'bleed', crop: M.cropFor(photos[0], PW, PH) });
       a.texts.push(txt({ x: cx(0), y: PH - 92, w: cw(6), size: 11, color: '#fff', opacity: .92, track: 3, text: o.plate + '   ' + o.title }));
       b.texts.push(txt({ x: cx(0), y: 96, w: cw(6), size: 11, track: 4, color: PAPER.muted, text: 'DETAILS' }));
-      wall(b, photos.slice(1, 9), {
+      wall(b, photos.slice(1, 8), {
         rows: [[4, 4, 4], [5, 4], [3, 3]],
         shapes: [[1.2, 0.95, 1.4], [1.42, 0.9], [1.0, 1.3]],
         indent: [0, 1, 3]
