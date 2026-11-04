@@ -512,3 +512,11 @@ body.solo-mode .page-wrap{margin:0}
 .plib-item .plib-used{right:5px;top:4px}
 .plib-star{left:5px;top:3px}
 @media (hover:none){.plib-del{opacity:.85}}
+
+.lib-shelf{margin:6px 0 2px;font-size:10.5px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.lib-shelf::after{content:"";flex:1;height:1px;background:var(--line)}
+.lib-kind{font-size:9.5px;letter-spacing:.08em;border:1px solid var(--line);padding:1px 4px;border-radius:2px;color:var(--faint);margin-right:4px}
+
+/* the tools sit above the row instead of widening it */
+.row-tools{position:absolute;right:0;top:-27px;margin-left:0;padding-top:0;z-index:6}
+.spread-type{position:static}

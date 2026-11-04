@@ -24,7 +24,17 @@
     { key: 'zine', name: '杂志 Zine', note: '三个排版模式共用一套构图库，字压图、密度高。' },
     { key: 'jp', name: '日式小书', note: '宽边距、小字、一页一个主意；开场 → 展开 → 跨页高潮 → 收尾。' }
   ];
+  function isMemory() { return !!(project && project.kind === 'memory'); }
+
+  /* a social work is exactly nine (or eleven) images.
+     A memory book has no page limit: the photos decide the length. */
   function unitsWanted() {
+    if (isMemory()) {
+      var n = state.photos.length;
+      var perSpread = state.mode === 'A' ? 3.2 : 6.4;   // single pages hold fewer
+      var units = Math.max(3, Math.round(n / perSpread));
+      return Math.min(units, 60);                        // sanity cap, not a product limit
+    }
     if (state.mode === 'A') return state.count === 9 ? 8 : 10;
     return state.count === 9 ? 4 : 5;
   }
@@ -57,7 +67,8 @@
     plibCount: $('#plibCount'), plibFilter: $('#plibFilter'), plibClose: $('#plibClose'),
     plibAll: $('#plibAll'), plibNone: $('#plibNone'),
     library: $('#library'), libList: $('#libList'), libNote: $('#libNote'), libQuota: $('#libQuota'),
-    libNew: $('#libNew'), libBackup: $('#libBackup'), libImport: $('#libImport'),
+    libNewMem: $('#libNewMem'), libNewSocial: $('#libNewSocial'),
+    libBackup: $('#libBackup'), libImport: $('#libImport'),
     libClose: $('#libClose'), backupInput: $('#backupInput'),
     saved: $('#saved'), savedGrid: $('#savedGrid'), savedNote: $('#savedNote'),
     savedTitle: $('#savedTitle'), savedClose: $('#savedClose')
@@ -813,6 +824,8 @@
     }
     el.zinePanel.hidden = false;
     el.empty.hidden = true;
+    var cb = el.counts && el.counts.closest('.rail-block');
+    if (cb) cb.hidden = isMemory();
     el.zineList.innerHTML = '';
     var stageW = (el.zineList.clientWidth || 1000) - 56;   // leave room for the lock tools beside the pages
     var pair = z.pair;
@@ -888,9 +901,13 @@
     });
 
     scheduleSave();
-    el.zineNote.textContent = z.total + ' 张 → ' + z.pages.length + ' 张图 · ' +
-      (pair ? '两张一组，手机上滑过去，跨页的图连成一整张。' : '每页独立构图。');
-    setStat(z.total + ' 张 · ' + z.pages.length + ' 张图');
+    el.zineNote.textContent = isMemory()
+      ? (z.total + ' 张 → ' + z.pages.length + ' 页（1 封面 + ' + z.units.length +
+         ' 个跨页）· 页数由照片数量决定，可以导出 PDF 打印。')
+      : (z.total + ' 张 → ' + z.pages.length + ' 张图 · ' +
+         (pair ? '两张一组，手机上滑过去，跨页的图连成一整张。' : '每页独立构图。'));
+    if (el.btnPNG) el.btnPNG.textContent = isMemory() ? '导出整本' : '导出九张';
+    setStat(z.total + ' 张 · ' + z.pages.length + (isMemory() ? ' 页' : ' 张图'));
   }
 
   function toggleLock(i) {
@@ -1486,68 +1503,131 @@
     var list = await M.STORE.listProjects();
     var covers = {};
     el.libList.innerHTML = '';
-    for (var i = 0; i < list.length; i++) {
-      var pr = list[i];
-      var versions = await M.STORE.listVersions(pr.id);
-      var draft = versions.filter(function (v) { return v.isAutoSaved; })[0];
-      var snap = (draft && draft.snapshot) || (versions[0] && versions[0].snapshot) || {};
-      var pages = (snap.pages || []).length;
 
-      var row = document.createElement('div');
-      row.className = 'lib-row' + (project && pr.id === project.id ? ' is-open' : '');
+    var shelves = [
+      { kind: 'memory', title: '回忆册 · 页数不设限' },
+      { kind: 'social', title: '作品 · 九张发出去' }
+    ];
 
-      var cover = document.createElement('div');
-      cover.className = 'lib-cover';
-      var coverId = pr.coverPhotoId || snap.coverId;
-      if (coverId && !covers[coverId]) {
-        var ph = state.library.filter(function (p) { return p.id === coverId; })[0];
-        covers[coverId] = ph ? ph.url : null;
+    for (var sIdx = 0; sIdx < shelves.length; sIdx++) {
+      var shelf = shelves[sIdx];
+      var items = list.filter(function (p) { return (p.kind || 'social') === shelf.kind; });
+
+      var head = document.createElement('div');
+      head.className = 'lib-shelf';
+      head.textContent = shelf.title + '（' + items.length + '）';
+      el.libList.appendChild(head);
+
+      if (!items.length) {
+        var none = document.createElement('p');
+        none.className = 'lib-sub';
+        none.style.padding = '6px 0 12px';
+        none.textContent = shelf.kind === 'memory'
+          ? '还没有回忆册。新建一本，把一次旅行的照片全放进去，页数会自动长出来。'
+          : '还没有作品。从回忆册里挑一批照片，做成九张发出去。';
+        el.libList.appendChild(none);
+        continue;
       }
-      if (coverId && covers[coverId]) {
-        var im = document.createElement('img');
-        im.src = covers[coverId]; im.alt = '';
-        cover.appendChild(im);
+
+      for (var i = 0; i < items.length; i++) {
+        var pr = items[i];
+        var versions = await M.STORE.listVersions(pr.id);
+        var draft = versions.filter(function (v) { return v.isAutoSaved; })[0];
+        var snap = (draft && draft.snapshot) || (versions[0] && versions[0].snapshot) || {};
+        var pages = (snap.pages || []).length;
+        var photos = (snap.photoIds || []).length;
+
+        var row = document.createElement('div');
+        row.className = 'lib-row' + (project && pr.id === project.id ? ' is-open' : '');
+
+        var cover = document.createElement('div');
+        cover.className = 'lib-cover';
+        var coverId = pr.coverPhotoId || snap.coverId;
+        if (coverId && covers[coverId] === undefined) {
+          var ph = state.library.filter(function (p) { return p.id === coverId; })[0];
+          covers[coverId] = ph ? ph.url : null;
+        }
+        if (coverId && covers[coverId]) {
+          var im = document.createElement('img');
+          im.src = covers[coverId]; im.alt = '';
+          cover.appendChild(im);
+        }
+        row.appendChild(cover);
+
+        var meta = document.createElement('div');
+        meta.className = 'lib-meta';
+        meta.innerHTML = '<p class="lib-title">' + escapeHtml(pr.title || '未命名') + '</p>' +
+          '<span class="lib-sub">' +
+          (pages ? pages + ' 页 · ' : '') + photos + ' 张照片 · ' +
+          (pr.designDirection === 'jp' ? '日式小书' : '杂志 Zine') + ' · ' +
+          fmtTime(pr.updatedAt || pr.createdAt) + ' · ' + versions.length + ' 个版本</span>';
+        row.appendChild(meta);
+
+        var acts = document.createElement('div');
+        acts.className = 'lib-acts';
+
+        var open = document.createElement('button');
+        open.className = 'btn btn-ghost';
+        open.textContent = '打开';
+        open.onclick = (function (id) { return function () { switchProject(id); }; })(pr.id);
+        acts.appendChild(open);
+
+        if ((pr.kind || 'social') === 'memory') {
+          var make = document.createElement('button');
+          make.className = 'btn btn-ghost';
+          make.textContent = '做成九图';
+          make.title = '从这本回忆册里挑照片，做一件九张的作品';
+          make.onclick = (function (p2) { return function () { socialFromMemory(p2); }; })(pr);
+          acts.appendChild(make);
+        }
+
+        var ren = document.createElement('button');
+        ren.className = 'btn btn-ghost';
+        ren.textContent = '改名';
+        ren.onclick = (function (p2) { return function () { renameProject(p2); }; })(pr);
+
+        var dup = document.createElement('button');
+        dup.className = 'btn btn-ghost';
+        dup.textContent = '复制';
+        dup.onclick = (function (p2) { return function () { copyProject(p2); }; })(pr);
+
+        var del = document.createElement('button');
+        del.className = 'btn btn-danger';
+        del.textContent = '删';
+        del.onclick = (function (p2) { return function () { removeProject(p2); }; })(pr);
+
+        acts.appendChild(ren); acts.appendChild(dup); acts.appendChild(del);
+        row.appendChild(acts);
+        el.libList.appendChild(row);
       }
-      row.appendChild(cover);
-
-      var meta = document.createElement('div');
-      meta.className = 'lib-meta';
-      meta.innerHTML = '<p class="lib-title">' + escapeHtml(pr.title || '未命名') + '</p>' +
-        '<span class="lib-sub">' + pages + ' 页 · ' +
-        (pr.designDirection === 'jp' ? '日式小书' : '杂志 Zine') + ' · ' +
-        fmtTime(pr.updatedAt || pr.createdAt) + ' · ' + versions.length + ' 个版本</span>';
-      row.appendChild(meta);
-
-      var open = document.createElement('button');
-      open.className = 'btn btn-ghost';
-      open.textContent = '打开';
-      open.onclick = (function (id) { return function () { switchProject(id); }; })(pr.id);
-      var ren = document.createElement('button');
-      ren.className = 'btn btn-ghost';
-      ren.textContent = '改名';
-      ren.onclick = (function (p2) { return function () { renameProject(p2); }; })(pr);
-      var dup = document.createElement('button');
-      dup.className = 'btn btn-ghost';
-      dup.textContent = '复制';
-      dup.onclick = (function (p2) { return function () { copyProject(p2); }; })(pr);
-      var del = document.createElement('button');
-      del.className = 'btn btn-danger';
-      del.textContent = '删';
-      del.onclick = (function (p2) { return function () { removeProject(p2); }; })(pr);
-
-      var acts = document.createElement('div');
-      acts.className = 'lib-acts';
-      acts.appendChild(open); acts.appendChild(ren); acts.appendChild(dup); acts.appendChild(del);
-      row.appendChild(acts);
-      el.libList.appendChild(row);
     }
-    if (!list.length) {
-      var empty = document.createElement('p');
-      empty.className = 'lib-sub';
-      empty.style.padding = '18px 0';
-      empty.textContent = '还没有作品。点「＋ 新建作品」，然后导入照片。';
-      el.libList.appendChild(empty);
-    }
+  }
+
+  /* a social work is born from a memory book: same photos, nine images out */
+  async function socialFromMemory(pr) {
+    var versions = await M.STORE.listVersions(pr.id);
+    var draft = versions.filter(function (v) { return v.isAutoSaved; })[0];
+    var ids = (draft && draft.snapshot && draft.snapshot.photoIds) || [];
+    if (!ids.length) { toast('这本回忆册还没有照片'); return; }
+    var pick = ids.slice(0, 30);
+    var copy = await M.STORE.createProject({
+      kind: 'social',
+      title: (pr.title || '回忆册') + ' · 九图',
+      designDirection: pr.designDirection,
+      settings: {
+        mode: 'C', scheme: 0, count: 9, seed: 11, locked: {},
+        photoIds: pick
+      },
+      texts: JSON.parse(JSON.stringify(pr.texts || {}))
+    });
+    await M.STORE.setPref('lastProjectId', copy.id);
+    project = copy;
+    state.photos = state.library.filter(function (p) { return pick.indexOf(p.id) >= 0; });
+    state.count = 9;
+    state.locked = {};
+    buildRail(); buildTray(); rebuild();
+    closeLibrary();
+    toast('做好了「' + copy.title + '」· 用了 ' + state.photos.length + ' 张');
   }
 
   async function switchProject(id) {
@@ -1573,10 +1653,11 @@
     toast('打开：' + (pr.title || '未命名'));
   }
 
-  async function newProject() {
+  async function newProject(kind) {
     await flushSave();
     var pr = await M.STORE.createProject({
-      title: '未命名的一卷',
+      kind: kind || 'social',
+      title: kind === 'memory' ? '一个新的回忆册' : '未命名的一卷',
       designDirection: state.direction,
       settings: { mode: state.mode, scheme: state.scheme, count: state.count, seed: state.seed, locked: {}, photoIds: [] },
       texts: {}
@@ -1584,6 +1665,7 @@
     project = pr;
     await M.STORE.setPref('lastProjectId', pr.id);
     state.photos = [];
+    if (kind === 'memory') state.count = 0;
     state.zine = null;
     buildTray();
     el.zinePanel.hidden = true; el.empty.hidden = false;
@@ -1656,7 +1738,8 @@
 
   el.btnLibrary.onclick = openLibrary;
   el.libClose.onclick = closeLibrary;
-  el.libNew.onclick = newProject;
+  if (el.libNewMem) el.libNewMem.onclick = function () { newProject('memory'); };
+  if (el.libNewSocial) el.libNewSocial.onclick = function () { newProject('social'); };
   el.library.addEventListener('click', function (e) { if (e.target === el.library) closeLibrary(); });
 
   /* ---------------- photo library (the whole shelf) ---------------- */

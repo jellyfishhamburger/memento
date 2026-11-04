@@ -124,6 +124,7 @@ window.MEM = window.MEM || {};
       var pr = {
         id: uid('pr'),
         title: opt.title || '未命名的一卷',
+        kind: opt.kind || 'social',      // 'social' (9 images) | 'memory' (a long book)
         type: opt.type || 'zine',
         designDirection: opt.designDirection || 'zine',
         createdAt: now,
@@ -184,6 +185,7 @@ window.MEM = window.MEM || {};
         return api.listVersions(id).then(function (vs) {
           return api.createProject({
             title: src.title + ' 副本',
+            kind: src.kind || 'social',
             type: src.type,
             designDirection: src.designDirection,
             coverPhotoId: src.coverPhotoId,
