@@ -24,8 +24,10 @@
   /* a design direction owns composition, rhythm and voice. Adding one is not a
      new skin: it brings its own pages, its own beat and its own words. */
   var DIRS = [
-    { key: 'zine', name: '杂志 Zine', note: '三个排版模式共用一套构图库，字压图、密度高。' },
-    { key: 'jp', name: '日式小书', note: '宽边距、小字、一页一个主意；开场 → 展开 → 跨页高潮 → 收尾。' }
+    { key: 'zine', name: '杂志 Zine', note: '三个排版模式共用一套构图库，字压图、密度高。',
+      artName: '衬线 · 编辑体', artNote: '大字号、字距松，安静的照片配它最稳。' },
+    { key: 'jp', name: '日式小书', note: '宽边距、小字、一页一个主意；开场 → 展开 → 跨页高潮 → 收尾。',
+      artName: '日式细字', artNote: '小字、宽边距，只借它的文字语气，版式仍由画像决定。' }
   ];
   function isMemory() { return !!(project && project.kind === 'memory'); }
 
@@ -87,11 +89,17 @@
 
   function buildRail() {
     el.dirs.innerHTML = '';
+    var artOn = state.engine === 'art';
+    var dirTitle = document.getElementById('dirTitle');
+    if (dirTitle) dirTitle.textContent = artOn ? '字体气质' : '设计方向';
     DIRS.forEach(function (d) {
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'opt';
       b.setAttribute('aria-pressed', String(state.direction === d.key));
-      b.innerHTML = '<span class="opt-body"><span class="opt-name">' + d.name + '</span></span>';
+      var nm = artOn ? (d.artName || d.name) : d.name;
+      var nt = artOn ? (d.artNote || '') : '';
+      b.innerHTML = '<span class="opt-body"><span class="opt-name">' + nm + '</span>' +
+        (nt ? '<span class="opt-note">' + nt + '</span>' : '') + '</span>';
       b.onclick = function () {
         if (state.direction === d.key) return;
         state.direction = d.key;
@@ -103,14 +111,13 @@
       el.dirs.appendChild(b);
     });
     var dirPick = (DIRS.filter(function (d) { return d.key === state.direction; })[0] || DIRS[0]);
-    el.dirNote.textContent = state.engine === 'art'
-      ? '艺术指导只用它决定文字与字体气质（构图、密度、张数由画像决定）。'
+    el.dirNote.textContent = artOn
+      ? '只决定字用什么、写多长；构图、密度、张数由照片画像决定。'
       : dirPick.note;
 
     // the japanese book has its own fixed narrative: no A/B/C, no scheme orders.
     // Art-director mode decides composition from the photos, so the same
     // controls would be lies there — hide them instead of letting them no-op.
-    var artOn = state.engine === 'art';
     el.modeBlock.hidden = isJp() || artOn;
     el.schemeBlock.hidden = isJp() || artOn;
     var cntBlock = el.counts && el.counts.closest('.rail-block');
