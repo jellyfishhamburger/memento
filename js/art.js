@@ -274,7 +274,7 @@ window.MEM = window.MEM || {};
       color: o.color || (o.onDark ? '#fff' : INK), align: o.align || 'left',
       tracking: (o.tracking == null ? d.type.tracking : o.tracking),
       lineHeight: o.lh || 1.35, opacity: o.opacity == null ? 1 : o.opacity,
-      overPhoto: !!o.overPhoto
+      overPhoto: !!o.overPhoto, keepSize: !!o.keepSize
     });
   }
 
@@ -304,6 +304,7 @@ window.MEM = window.MEM || {};
         ? fits.sort(function (a, b) { return b.h - a.h; })[0]
         : bands.slice().sort(function (a, b) { return b.h - a.h; })[0];
       if (!band) return;
+      if (h > band.h && t.keepSize) { keep.push(t); return; }
       if (h > band.h) {
         var k = band.h / h;
         t.size = Math.max(15, t.size * k);
@@ -350,6 +351,62 @@ window.MEM = window.MEM || {};
   }
 
   var FAMILIES = {
+
+    /* D1 满版: the picture owns the paper. No type, no margin games. */
+    full: function (photos, d, g, ctx) {
+      var pg = page();
+      var p = photos[0];
+      put(pg, p, 0, 0, PW, PH, { role: 'bleed', pad: 0 });
+      return { pg: pg, params: { bleed: true }, family: 'full' };
+    },
+
+    /* D6 跨中缝: for now a wide page whose subject sits near the inner edge */
+    gutter: function (photos, d, g, ctx) {
+      var pg = page();
+      var p = photos[0];
+      put(pg, p, 0, PH * 0.12, PW, PH * 0.76, { role: 'bleed', pad: 0 });
+      return { pg: pg, params: { spread: true }, family: 'gutter' };
+    },
+
+    /* D3 白场: the page does nothing. That is the point. */
+    blank: function (photos, d, g, ctx) {
+      var pg = page();
+      if (ctx.plate) {
+        typeBlock(pg, d, {
+          x: g.x(0), y: g.bottom - 26, w: g.w(Math.min(3, g.cols)),
+          size: 8.5, tracking: 5, text: ctx.plate, color: MUTED
+        });
+      }
+      return { pg: pg, params: {}, family: 'blank' };
+    },
+
+    /* D12 章节页: a reset. One line, a lot of paper. */
+    divider: function (photos, d, g, ctx) {
+      var pg = page();
+      var t = String(ctx.head || ctx.line || '').trim() || '—';
+      typeBlock(pg, d, {
+        x: g.x(0), y: PH * 0.40, w: g.w(Math.min(6, g.cols)),
+        size: 30, text: t, lh: 1.2
+      });
+      typeBlock(pg, d, {
+        x: g.x(0), y: PH * 0.40 + 62, w: g.w(Math.min(4, g.cols)),
+        size: 9, tracking: 6, text: (ctx.plate || ''), color: MUTED
+      });
+      return { pg: pg, params: { head: t.slice(0, 8) }, family: 'divider' };
+    },
+
+    /* D5 对页对抗: one loud, one small, placed to argue with each other. */
+    clash: function (photos, d, g, ctx) {
+      var pg = page();
+      var a = photos[0], b = photos[1] || photos[0];
+      var bigH = (g.bottom - g.top) * 0.62;
+      var bigW = Math.min(g.contentW * 0.72, bigH * (a.ar || 1));
+      put(pg, a, g.x(0), g.top + 20, bigW, bigW / (a.ar || 1), { role: 'detail' });
+      var smallW = g.contentW * 0.22;
+      put(pg, b, PW - g.outer - smallW, g.bottom - smallW / (b.ar || 1) - 10,
+        smallW, smallW / (b.ar || 1), { role: 'detail' });
+      return { pg: pg, params: { ratio: +(bigW / smallW).toFixed(1) }, family: 'clash' };
+    },
     /* one photo owns the page */
     single: function (photos, d, g, ctx) {
       var pg = page();
@@ -494,21 +551,29 @@ window.MEM = window.MEM || {};
       var headline = ctx.head || ctx.line || '';
       var size = 62 + ctx.rand() * 46;
       var tx = ctx.rand() < 0.25 ? g.x(1) : g.x(0);
-      typeBlock(pg, d, { x: tx, y: g.top + (g.bottom - g.top) * 0.16, w: g.w(Math.min(g.cols - 1, 7)), size: size, text: headline, lh: 1.22 });
       typeBlock(pg, d, {
-        x: g.x(0), y: g.top + (g.bottom - g.top) * 0.16 + size * 1.3,
+        x: tx, y: g.top + (g.bottom - g.top) * 0.12,
+        w: g.w(Math.min(g.cols - 1, 7)), size: size, text: headline, lh: 1.22, keepSize: true
+      });
+      typeBlock(pg, d, {
+        x: g.x(0), y: g.top + (g.bottom - g.top) * 0.12 + size * 1.3,
         w: g.w(Math.min(5, g.cols)), size: 11, tracking: 5, text: ctx.plate || '', color: MUTED
       });
+      /* the picture answers the line from the lower half — it never grows into
+         the type, which is what used to squeeze the headline down to nothing */
+      var cap = (g.bottom - g.top) * 0.42;
       var p = photos[0];
       if (p) {
         var w = g.w(Math.min(5, g.cols)) * (0.7 + ctx.rand() * 0.3);
         var h = w / (p.ar || 1);
-        put(pg, p, g.x(g.cols - Math.min(5, g.cols)), g.bottom - h - (ctx.rand() < 0.4 ? 0 : 40), w, h);
+        if (h > cap) { h = cap; w = h * (p.ar || 1); }
+        put(pg, p, g.x(g.cols) - w + g.outer - g.outer, g.bottom - h - (ctx.rand() < 0.4 ? 0 : 30), w, h);
       }
       if (photos[1]) {
         var w2 = g.w(Math.min(3, g.cols)) * 0.8;
         var h2 = w2 / (photos[1].ar || 1);
-        put(pg, photos[1], g.x(0), g.bottom - h2 - 46, w2, h2);
+        if (h2 > cap * 0.8) { h2 = cap * 0.8; w2 = h2 * (photos[1].ar || 1); }
+        put(pg, photos[1], g.x(0), g.bottom - h2 - 40, w2, h2);
       }
       return { pg: pg, params: { size: Math.round(size), lead: headline.slice(0, 12) }, family: 'type-led' };
     },
@@ -741,5 +806,147 @@ window.MEM = window.MEM || {};
     return false;
   }
 
-  M.ART = { profile: profile, direction: direction, compose: compose, FAMILIES: FAMILIES, gridOf: gridOf, finger: finger };
+
+  /* ---------- plan-driven book (v2) ----------
+     The plan decides the device of every page; this only turns devices into
+     geometry. Nothing here invents rhythm. */
+  function composePlan(photos, opt) {
+    opt = opt || {};
+    var list = photos.filter(function (p) { return p && p.img; });
+    if (!list.length) return { pages: [], total: 0, plan: null };
+    var prof = profile(list);
+    var dir = direction(prof);
+    var brief = opt.brief || {};
+    if (brief.density) {
+      dir.coverage = { minimal: 0.30, balanced: 0.46, rich: 0.62 }[brief.density] || dir.coverage;
+    }
+    var g = gridOf(dir);
+    var rand = rngFrom((opt.seed || 7) + '|plan|' + dir.temperament + '|' + list.length);
+    var planBrief = {
+      rhythm: brief.rhythm || 'crescendo',
+      density: brief.density || 'balanced',
+      composition: brief.composition || 'flexible',
+      kind: brief.kind || 'memory',
+      length: { targetPages: Math.max(6, (brief.length && brief.length.targetPages) || M.PLAN.suggestPages(list.length, brief.kind)) },
+      cover: true
+    };
+    var P = M.PLAN.plan(list.length, planBrief);
+
+    var byHero = list.slice().sort(function (a, b) { return (b.hero || 0) - (a.hero || 0); });
+    var starPool = byHero.slice(0, Math.max(2, Math.round(list.length * 0.25)));
+    var restPool = byHero.slice(starPool.length);
+    var coverPhoto = starPool.shift() || list[0];
+
+    var pages = [], log = [], usedLines = 0;
+    var lines = (opt.lines || []).slice();
+
+    P.pages.forEach(function (item, pi) {
+      var DEVICE_FAMILY = {
+        full: 'full', gutter: 'gutter', contact: 'wall', diptych: 'diptych', clash: 'clash',
+        strip: 'strip', plate: 'single', type: 'type-led', breath: 'blank', divider: 'divider'
+      };
+      var fam = DEVICE_FAMILY[item.device] || 'single';
+      if (fam === 'type-led' && !((opt.sections && opt.sections[pi]) || (lines.length && item.device === 'type'))) fam = 'single';
+      var fn = FAMILIES[fam] || FAMILIES.single;
+      var n = item.n;
+      var chunk = [];
+      if (fam === 'full' || fam === 'gutter') {
+        chunk = [starPool.shift() || restPool.shift()].filter(Boolean);
+      } else if (fam === 'clash') {
+        chunk = [starPool.shift() || restPool.shift(), restPool.shift()].filter(Boolean);
+      } else if (n > 0) {
+        for (var k = 0; k < n; k++) {
+          var pick = restPool.shift() || starPool.shift();
+          if (pick) chunk.push(pick);
+        }
+      }
+      if (fam !== 'blank' && fam !== 'divider' && !chunk.length) return;
+
+      var typeMode = (brief.type || 'captions');
+      var wantsText =
+        typeMode === 'free' ? true :
+        typeMode === 'photo-only' ? false :
+        (item.device === 'type' || item.device === 'divider') ? true :
+        typeMode === 'chapters' ? (pi % 4 === 2) :
+        (pi % 3 === 1);            /* captions: one note every three pages */
+      var ctxLine = (wantsText && lines.length) ? lines[usedLines % lines.length] : '';
+      if (wantsText && lines.length) usedLines++;
+      var built = fn(chunk, dir, g, {
+        rand: rand,
+        line: ctxLine,
+        head: (opt.sections && opt.sections[pi]) || ctxLine,
+        plate: 'PLATE ' + (pi + 1 < 10 ? '0' : '') + (pi + 1),
+        section: pi === 0
+      });
+      if (built.family !== 'blank' && built.family !== 'divider') {
+        fitCoverage(built.pg, DEVICE_COV(item.device, dir), dir.temperament === 'loud');
+      }
+      settleText(built.pg, dir, g);
+      if (built.family === 'type-led' || built.family === 'divider') usedLines++;
+      pages.push(built.pg);
+      log.push({
+        page: pi + 2, device: item.device, name: item.name, I: item.I,
+        family: built.family, photos: chunk.map(function (x) { return x.name || x.id; }),
+        params: built.params, reason: item.reason
+      });
+    });
+
+    var left = starPool.concat(restPool);
+    if (left.length) {
+      var extra = FAMILIES.wall(left.slice(0, 9), dir, g, { rand: rand, plate: 'PLATE ' + (pages.length + 2) });
+      fitCoverage(extra.pg, dir.coverage, false);
+      settleText(extra.pg, dir, g);
+      pages.push(extra.pg);
+      log.push({ page: pages.length + 1, device: 'contact', name: '补页', reason: '计划外的照片' });
+    }
+
+    var cover = buildCover(coverPhoto, dir, g, opt, list.length);
+    var all = [cover].concat(pages);
+    var units = all.map(function (pg, i) {
+      return { key: 'p' + i, startIndex: i, pages: [pg] };
+    });
+    return {
+      pages: all, units: units, pair: false, total: list.length,
+      plan: P, direction: dir, profile: prof, log: log,
+      targetPages: P.targetPages + 1,
+      advise: left.length ? null : P.advise
+    };
+  }
+
+  function DEVICES_FALLBACK(k) {
+    return k === 'contact' ? 'wall' : (k === 'diptych' || k === 'clash') ? 'diptych' : 'single';
+  }
+  function DEVICE_COV(k, dir) {
+    var c = {
+      full: 0.90, gutter: 0.92, contact: 0.62, diptych: 0.46, clash: 0.52,
+      strip: 0.40, plate: 0.42, type: 0.30
+    }[k];
+    return c == null ? dir.coverage : c;
+  }
+
+  /* cover: quiet prints on paper, loud bleeds. Same voice as before. */
+  function buildCover(coverPhoto, dir, g, opt, count) {
+    var cover = page();
+    var title = opt.title || '未命名的一卷';
+    var full = dir.temperament === 'loud' || dir.temperament === 'cinematic';
+    if (full) {
+      put(cover, coverPhoto, 0, 0, PW, PH, { role: 'bleed' });
+      typeBlock(cover, dir, { x: g.outer, y: PH - 250, w: PW - g.outer * 2, size: 54, text: title, color: '#fff', lh: 1.16, overPhoto: true });
+      typeBlock(cover, dir, { x: g.outer, y: PH - 150, w: PW - g.outer * 2, size: 10.5, tracking: 6,
+        text: count + ' PHOTOGRAPHS  ·  ' + (opt.year || new Date().getFullYear()), color: 'rgba(255,255,255,.8)', overPhoto: true });
+    } else {
+      var cw = Math.min(g.contentW, PW * 0.62);
+      var cTop = g.top + PH * 0.10;
+      var cMax = Math.min(PH * 0.60, PH * 0.70 - 90 - cTop);
+      var chh = Math.min(cw / (coverPhoto.ar || 1), cMax);
+      put(cover, coverPhoto, (PW - cw) / 2, cTop, cw, chh);
+      var ty = cTop + chh + 54;
+      typeBlock(cover, dir, { x: g.x(0), y: ty, w: g.contentW, size: 42, text: title, align: 'center', lh: 1.22 });
+      typeBlock(cover, dir, { x: g.x(0), y: ty + 42 * dir.type.scale * 1.5, w: g.contentW, size: 10, tracking: 6,
+        text: count + ' PHOTOGRAPHS  ·  ' + (opt.year || new Date().getFullYear()), color: MUTED, align: 'center' });
+    }
+    return cover;
+  }
+
+  M.ART = { profile: profile, composePlan: composePlan, direction: direction, compose: compose, FAMILIES: FAMILIES, gridOf: gridOf, finger: finger };
 })(window.MEM);

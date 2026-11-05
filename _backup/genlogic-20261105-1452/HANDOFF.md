@@ -1,0 +1,189 @@
+# MEMENTO · 交接（2026-11-04）
+
+## 仓库 / 线上
+- 本地：`C:\Users\22390\Desktop\memento`（git `main`）
+- 线上：https://jellyfishhamburger.github.io/memento/?mode=zine
+- 结构：`js/app.js`（壳/状态/文字面板） `js/compose.js`（方向 + 构图库） `js/render.js`（DOM + canvas 两个渲染器）`js/export.js`（PNG/PDF）`js/engine.js`（旧引擎，仍在用 cropFor/analyze）
+
+## 已完成
+1. 手机滚动跳底：resize 240ms 防抖 + 只在宽度变化时重排。
+2. 换一版真换版式：`btnShuffle` 连 `state.scheme` 一起轮换。
+3. 照片刷新不丢（有限）：`localStorage['memento.photos.v1']`。
+   **未修**：恢复用的是 `p.url`，上传照片是 blob URL，刷新即失效 → 只有示例图真恢复。真修走 IndexedDB（待做 2）。
+4. ★ 主视觉：`p.starred`，`memento.stars.v1`，刷新恢复。规则：★ 只在大位/跨页位优先，小位不受影响。
+5. 星标分配：`slotGeom()` 每位带 `{i, role, big}`；`BUILD_SLOTS` 逐 key 声明角色；封面 → 大位（★ +4）→ 小位原逻辑。
+6. 跨页拖动裁切：`foldPair()` / `sharedCrop()` / `writeSharedCrop()` / `setPairPhoto()`；点任意一半打开整幅裁切框，折线虚线标位；换图整对换。
+7. **设计方向 Art Direction（本次）**
+   - 顶栏左侧新增「设计方向」：`杂志 Zine`（原有全部功能，一字未删）/ `日式小书 Japanese Minimal`。
+   - 选日式时「排版模式 / 方案」自动隐藏（`#modeBlock` `#schemeBlock`），方向存在 `localStorage['memento.dir.v1']`，刷新保持。
+   - **日式小书 = 8 个专属构图**（`jp-cover/open/solo/pair/triple/fold/sequence/quiet/end`），与 23 套 zine 构图完全隔离（`mode:'jp'`，`pickComps` 不会选中它们）。
+     - 统一系统：外白边 150px、正文 10–12px、标题 36px、页眉小字 + 页脚短句、每页同一个骨架（左上 plate、页脚句）。
+     - `jpPlan(n, pages)` 按张数分配：8 页骨架 = 开场→单页主图→一大一小→小图序列→**跨页**→停顿→收尾；张数多时先加密度，超过容量才多开一页（不再往缝里塞小图）。
+     - 每页最多几张：open 1 / solo 2 / pair 3 / triple 5 / fold 1（跨页只放一张，altitude 干净）/ sequence 5 / quiet 2 / end 2。
+   - **文字变成数据**：`M.TEXT_DEFAULT`（两个方向各一套默认文字：书名/年份/6 个章节词/8 句）→ `state.texts[dir]` → `localStorage['memento.text.v1']`。
+     顶栏「文字」面板可改：书名、年份、章节词（逗号分隔）、每页短句（一行一句），输入即重排（280ms 防抖），有「恢复本方向默认」。
+8. 排版修正（两条都会被用户一眼看到）
+   - `render.js: wrapLines()` 不再把「。」「，」甩到下一行行首（避头尾）。
+   - `compose.js` 的 `hue()` 兼容 3 位 hex；以前 `#888` 会算出 NaN，整页的小图分配会静默失败（页面上只剩一张图 + 剩下的被塞进最后一页）。
+   - `paintZine()` 的 `stageW` 减 56（右侧「构图/锁定」占位）；390/1000/1440 无横向溢出。
+   - 单页单元不再被标成「02 — 03」跨页标签；日式页在桌面可以放大到 620 高。
+
+## 待做
+1. （原）跨页单元入口「设为跨页主图」→ 写 `state.forced`。
+2. localStorage → IndexedDB：多图配额 + 上传照片刷新丢失。
+3. 照片多于页面容量时，zine 方向第 7 步「塞进最大空白」仍会填 40–60px 小图（日式方向已经不会了；zine 方向待定策略）。
+4. 其余三个方向（Swiss / Experimental / Travel Journal）：一个方向一份构图库 + 一套文字 + 一次验收，先看日式的实际反馈再动。
+
+## 已验证
+- `node --check js/*.js` 全过。
+- `_inspect/jp_model.js`：5 种张数 × 8/10 页 = 10 例，全部「照片恰好一次、不超页、同页不重、无叠框、★ 落大位、跨页连续、无残留」。
+- `_inspect/star_sweep.js`（zine 54 例 576 页）、`_inspect/fold_model.js`（48 个跨页）仍为 0 错误。
+- `_inspect/jp_text_test.mjs`：UI 打开面板 → 改书名/年份/章节词/短句 → 页面模型立刻更新 → 刷新后方向、文字全部还原。
+- 视觉：`_inspect/jp/p00…p08.png`（整本 9 页，逐页看过）、`contact.png`、`app-1440.png`、`app-390.png`、`lb7.png`（DOM 灯箱与 canvas 导出一致）。
+- 390/1000/1440 无横向溢出。
+
+## 补丁（同一天）
+- `buildOne()` 兜底：照片数组为空时返回空白页，不再抛错。
+- 单元数不会超过照片数（`wantUnits = min(opt.units, list.length - 1)`）：3 张照片不会再生成 4 个单元。
+- 这两个是「照片很少时整页崩掉」的真 bug，提交 `ebc2825` / `933bc48`。
+
+## 已知坑
+- GitHub Pages 的 CDN 会缓存旧 js 约 1–5 分钟：推完马上用浏览器打开可能还是旧代码（我踩过，表现为 `Cannot read ... 'ar'`）。验证线上时先 curl 加 `?x=random` 确认文件已更新，再刷新页面。
+- 手机预览里 10–12px 的正文只有 4px 高，几乎读不清 —— 这是 1080 宽页面缩到 390 的物理限制，不是 bug；看字要开灯箱或导出。
+- 灯箱（DOM）与导出（canvas）用两套测量，改文字换行时必须两个都改（`wrapLines` 是唯一共享点）。
+- 方向/文字的默认值改完要**清 localStorage** 才能看到（`_inspect/jp_shot.mjs` 支持 `CLEAR=1`）。
+- 本地预览：`cd ~/Desktop/memento && python -m http.server 8770` → `http://127.0.0.1:8770/?mode=zine`。
+- CDP：Chrome 常在 9333，`node _inspect/cdp.mjs <url> <expr.js>`；`_inspect/jp_shot.mjs` 支持 `CLEAR=/OUT=`。
+
+---
+
+# 本地持久化与版本管理（2026-11-04 第二轮）
+
+## 这一轮做了什么
+1. **IndexedDB（`js/storage.js`）**：库 `memento-db` v1，四表 `photos / projects / versions / prefs`。原生封装，无 CDN 依赖。
+2. **Blob URL 生命周期（`js/objects.js`）**：`acquire/release/releaseAll` + 引用计数；一个 photoId 一个 URL。验收时 38 张 = 38 个 URL，反复渲染不增长。
+3. **真持久化**：导入走 `importFile()` → 分析 + 1600px 工作副本 + 420 缩略图 → 写库 → 用库里的 Blob 建 URL。刷新后从库恢复，页面模型逐字节一致（哈希比对）。
+4. **多作品**：顶栏「作品库」：新建 / 打开 / 改名 / 复制 / 删除 / 封面 / 页数 / 更新时间。删作品不删照片。
+5. **自动保存**：`scheduleSave()` 650ms 防抖 → `saveDraft()` 覆盖**该项目唯一的** `isAutoSaved` 草稿；顶栏状态 `保存中…/已保存 hh:mm/保存失败 ⟳`，失败可点重试。`visibilitychange` + `pagehide` 会 flush。
+6. **版本**：`保存版本` 存独立快照（瘦身页面模型，只存 photoId）；版本面板可恢复、可删；恢复 = 把快照写成当前草稿，不动历史行。手动版本号从 1 开始，草稿不占号。
+7. **备份（`js/backup.js`）**：`.memento` = zip(manifest.json + projects.json + photos/ + thumbs/)，自带 zip 读写（store + deflate，`DecompressionStream`）。导入先校验再写，缺图整批取消；id 冲突自动改 id。
+8. **迁移**：`migratedV1` 一次性；`blob:` 旧照片判失效并明确提示，不假恢复。
+9. README 重写（数据结构 / 版本快照格式 / 迁移 / 备份 / 限制）。
+
+## 本轮踩到的坑（都修了）
+- **`state.library` 与 `state.photos` 不同步**：首次导入时 `loadLibrary()` 先跑（库是空的），之后导入只 push 到 `state.photos` → 恢复版本时 `state.library` 查不到照片 → 页面全空、还把这版空快照存成草稿。修：`noteImported()` 同时写两处 + `applySnapshot` 缺 id 时回库查 `getPhoto`。
+- **草稿吃掉了 v1 的编号**：`saveVersion` 原来把 `isAutoSaved` 也算进版本号，第一份手动版本变成 v2。修：只按手动版本算号。
+- **单元测试用的 cdp 默认 profile 里有旧数据**，导致「manifest 不生效」的假象（其实是有草稿优先恢复，行为正确）。验收脚本改成每次随机 `--user-data-dir`。
+
+## 现在怎么验
+```
+node _inspect/accept.mjs     # 全流程：导入→刷新→版本→恢复→库→备份往返→写失败
+```
+最近跑通：38 张 / 9 页 / 哈希一致 / 恢复 v1 后刷新仍 v1 / 复制删除不影响照片 / 备份 20.7MB 往返完整 / 写失败显示「保存失败 ⟳」。
+
+## 仍待做
+1. 照片库页面（列表、收藏、彻底删除 + 引用检查）。数据模型已支持，UI 未做。
+2. 「导入的这本」与「照片库」的边界：目前 tray 的删除 = 从这本移出。
+3. 配额接近上限时的预警与自动降级（现在是显示已用量）。
+4. 三条未实现的方向（Swiss / Experimental / Travel Journal）—— 等日式反馈。
+
+## 追加：照片库（同一天）
+
+- 顶栏「照片库」：`#photoLib`，网格 5 列（手机 3 列）。
+- 每格：☆/★ 收藏（写 `photos.starred`，★ 会被 `compose.js` 当成主视觉优先）、引用计数标签（`N 本` / `本册` / `未用`）、「加入这本」「彻底删」。
+- 筛选：全部 / ★ 收藏 / 没用上；按 `importedAt` 倒序。
+- `deleteFromLibrary()`：先 `projectsUsingPhoto` 查引用 → 有引用弹明确警告 → `STORE.deletePhoto` + `OBJ.release` + 从 `state.photos` 摘掉 → 重排。
+- 配额：`showQuota()` 在 >80% 时点亮 `#quotaWarn`（伪造 estimate 测过）。
+- 手机：`@media (max-width:560px),(hover:none)` 让操做按钮常显（触屏没有 hover，之前 opacity:0 等于不可点）。
+
+### 仍未做
+- 照片标签（tags）字段还没用上；`analysis` 里没有语义内容（分不清海边/街道），所以「自动挑主视觉」仍只看比例、明暗、色彩。
+- 照片库没有搜索/批量选择。
+
+
+---
+
+# 第二阶段：智能文字与 Editorial Assistant（同日）
+
+## 新增文件
+- `js/text.js` —— 三层文字模型：`{version, style, noText, memory, items:[{id, role, text, source, isUserEdited, createdAt, originalTextId}]}`。
+  `toEngine()` 只吐 `{title, year, sections, lines}` 给排版引擎；**字体/字号/位置全在 compose.js，文字模块不碰**。
+  `adopt(doc, direction)` 采纳 AI 方向时**跳过 isUserEdited 的行**，返回 `{applied, kept}`。
+- `js/ai/schemas.js` —— 唯一允许的输出 Schema + `normalize()`（截断跑题的标题到 16 字、拆首句、过滤「时光/岁月/仿佛/光影交错」这类套话、去重）+ `lint()`（编地点/编日期/含 HTML 就报警）。
+- `js/ai/prompts.js` —— 系统提示（事实纪律 5 条）+ 三个固定编辑角度：`time` 时间纪实 / `objects` 物件静物 / `voice` 第一人称。每个角度单独一次调用，逼出差异。
+- `js/ai/ollama.js` —— `health()` / `chat()`，AbortController 超时、错误归因（offline / timeout / model / json / empty），base 与 model 存 localStorage 可改。
+- `js/ai/provider.js` —— 状态机 + 人话解释；启动时探测一次，之后只在按钮点击时才调用。
+- `js/ai/editorial.js` —— `buildBrief()`（只放真知道的东西：张数、画幅比、取色调色板、明暗、用户记忆、已手写的行；**日期/地点一律 null**，因为不解析 EXIF，不编）+ 三路并发生成 + 相似度守卫（标题+短句 2-gram 重合 >0.5 会提示「两个方向偏像」）。
+
+## 关键决定
+- **不解析 EXIF**：`file.lastModified` 是文件时间不是拍摄时间，把它当拍摄日期就是编造。所以 brief 里 `dates: null, places: null`，prompt 明确「时间未知就不要写具体日期」。
+- **不用一次调用要三个方向**：3B 模型会自我复制（实测三张卡都是「午后的光与回忆/时光流转/光影交错」）。改成三个角度各调用一次，并发，约 8–14 秒。
+- **输出后处理是必须的**：3B 模型会写 60 字的长标题、堆套话；`tidyTitle()` 取首个短句并截到 16 字，`BANNED` 正则删掉套话短句，少于 3 条时退回未过滤版本。
+- **模型可选**：面板里有模型下拉（读 `/api/tags`），换更强的模型立即生效。
+
+## 实测（本机 qwen2.5vl:3b）
+- 三个角度 8–14s 返回，标题「清晨 / 橙棕色的树叶 / 晨光初现」，三个角度真的不同。
+- 手写书名 + 采纳 AI：书名保留（`source: user`），只补了 5 条短句。
+- 拔掉 Ollama（base 指死端口）：0ms 返回内置模板，界面明说「本地模型没连上」。
+- No Text：标题/短句/章节词全空，9 页 17 框照常渲染。
+- 版本往返：带文字存版本 → 改标题 → 恢复 → 文字回到原样。
+
+## 已知限制
+- 3B 模型的中文质量上限就在那：概念句仍会写套话，`concept` 字段没做过滤。换 7B+ 明显更好，面板里可以直接换。
+- 没做多模态（不看图），所以文字只能基于张数/色调/明暗/用户记忆，不能写「照片里有一只猫」。
+- 封面/内页/结尾分别用不同风格：数据结构已支持（doc 里可按 role 存 style），UI 还没做。
+
+
+## 追加：WebP 两档 + 长期保存（同日）
+
+- `importFile()` 现在写 **2000px WebP(q85) + 400px WebP(q75)**，不再存 1600 JPEG，也不再存 `original`。2560 large 档留到导出时临时生成（导出只要 1080×1440）。
+- `analyze.js` 新增 `M.toBlobType(img, max, type, q)`：`M.canWebp()` 探测编码支持，不支持就回退 JPEG 并**保留白底填充**（JPEG 无 alpha）；`scale = min(1, max/长边)` 保证**不放大低分辨率原图**。
+- 记录里新增 `format` 与 `bytes:{preview, thumb}`，照片库用它们算"这套照片 X MB"（老记录没有该字段，自动跳过）。
+- 首次导入调 `STORAGE.persist()`；作品库/照片库都写明「不是原图备份」。
+- 实测（6 张真原图走真实 import 门）：全部 `image/webp`；尺寸最大 2000 长边、小图按原尺寸不放大；21 张合计 5.8MB；渲染 21/21 正常；`original` 0 份。
+- 仍待做：**长书模式**（现在整本上限 11 张图，100 张做不了一本大书）。
+
+
+## 追加：长书（回忆册）与两个抽屉（同日）
+
+- `projects.kind`: `'memory'`（回忆册，页数不设限）/ `'social'`（九张作品，默认）。
+- `unitsWanted()`：memory 时 `units = round(照片数 / 6.4)`（A 模式 3.2），上限 60 只为防呆，不是产品限制；social 时仍是 8/10。
+- 顶栏「张数」选择器在回忆册里自动隐藏；导出按钮文案变成「导出整本」。
+- 作品库分成两栏（回忆册 / 作品），回忆册行多一个「做成九图」：复制前 30 张 photoIds 新建 social 项目。
+- 照片库变成挑选器：点图切换「在这本 / 不在这本」（✓ / +），筛选「在这本 / 没在这本 / ★」，全选 / 全不选；侧栏「挑选照片」直接进“没在这本”。
+- 修：`paintZine()` 现在自己管面板可见性（之前由调用方决定，恢复快照时渲染进了隐藏容器 → 宽屏一片空白）；页面高度按窗口算（上限 720），行居中；`.row-tools` 改成绝对定位，不再撑宽行。
+
+### 验收
+- 38 张回忆册 → 13 页、38 框、PDF 7.3MB / 2.3s。
+- 回忆册「做成九图」→ 30 张 / 9 页的 social 作品。
+- 作品库两栏、张数选择器隐藏、导出文案随类型变化。
+
+
+## 追加：AI 接入修复 + 松紧滑杆（同日）
+
+### 为什么她那边连不上
+线上是 `https://jellyfishhamburger.github.io`，Ollama 在 `http://127.0.0.1:11434`。浏览器禁止 https 页面请求 http 子资源（混合内容），所以**线上版永远连不到本机模型**，跟 CORS 无关。
+
+### 解法：`serve.py` + `start-local.cmd`
+- 一个 Python 标准库小服务：静态文件 + `/ai/*` 反代到 `11434`（带 CORS 头、180s 超时、502 时返回中文提示）。
+- 网页与代理同源 → 无 CORS、无混合内容。
+- `js/ai/ollama.js` 改成多候选探测：`手动设置的 base → 同源 /ai → 127.0.0.1:11434`，命中后记住（`resolved`）。
+- `provider.explain()` 在 https 场景下直接说“线上版不能访问本机 Ollama，用 start-local.cmd”。
+- 面板里的「连不上？三步」写清了这三步。
+
+### 松紧滑杆（回忆册专用）
+- `state.density`: tight 9 / normal 6.4 / airy 3.2 张每跨页；A 模式减半。
+- `unitsWanted()` = round(照片数 / per)，最小 3，上限 80（防呆）。
+- 侧栏出现「松紧」三段控件，只在回忆册显示；选择写进 snapshot，重开保持。
+- 实测 16 张：紧凑 7 页 / 标准 7 页 / 舒展 11 页，16 张全部用上。
+
+### 待探索（她提的问题）
+“理解照片背后的故事”“两页的区别”。当前引擎只会换词、换冷暖，不会因为照片情绪改变结构 —— 记在这里，下一阶段再谈。
+
+
+## 追加：start-local 两次翻车（记下来别再犯）
+
+1. **`.cmd` 用 LF 换行 + 中文 + chcp** → 双击一闪就关，什么都没发生。改成 **ASCII-only 的 `.bat`、强制 CRLF**（写完要用 `b'
+'` 校验，git 也会提示 LF→CRLF）。
+2. **8899 被冰箱项目占着**（`http://127.0.0.1:8899/` 返回 Fridge Decision）→ `serve.py` 绑不上端口，Python 抛 OSError，窗口立刻退出 = 用户看到「双击没反应」。现在 `serve.py` 自己扫 8901–8919 找空端口，并用 `webbrowser.open()` 打开正确地址（不再由 bat 猜端口）。
+3. 教训：**给用户双击的东西，必须自己在本机跑一遍再交**。判断是否真的起来了：`curl http://127.0.0.1:<port>/` + `/ai/api/tags` 两处都 200。

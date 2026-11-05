@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MEMENTO — 让照片变成一本作品集</title>
+<link rel="stylesheet" href="css/app.css?v=20261105g">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">M</span>
+    <span class="wordmark">MEMENTO</span>
+  </div>
+  <input id="titleInput" class="title-input" value="十一月的海" aria-label="作品标题" spellcheck="false">
+  <div class="bar-spacer"></div>
+  <span id="saveState" class="save-state" data-state="idle" title="本地保存状态"></span>
+  <span id="statLine" class="stat">还没有照片</span>
+  <button id="btnText" class="btn btn-ghost">文字</button>
+  <button id="btnColls" class="btn btn-ghost">照片集合</button>
+  <button id="btnPhotos" class="btn btn-ghost">这本的照片</button>
+  <button id="btnLibrary" class="btn btn-ghost">我的书</button>
+  <button id="btnImport" class="btn btn-ghost">导入照片</button>
+  <button id="btnVersion" class="btn btn-ghost" disabled>保存版本</button>
+  <button id="btnPDF" class="btn btn-ghost" disabled>导出 PDF</button>
+  <button id="btnPNG" class="btn btn-primary" disabled>导出九张</button>
+  <span class="buildStamp" title="这一页的版本">v20261105g</span>
+</header>
+
+<main class="shell">
+  <aside class="rail">
+    <section class="rail-block">
+      <h2 class="rail-title">排版引擎</h2>
+      <div id="engines" class="seg" role="group" aria-label="排版引擎">
+        <button type="button" data-engine="classic">经典</button>
+        <button type="button" data-engine="art">艺术指导</button>
+      </div>
+      <p id="engineNote" class="rail-note">经典＝现有构图库；艺术指导＝先读照片再定方向（实验）。</p>
+      <details id="artWhy" class="art-why" hidden>
+        <summary>这本书为什么这样排</summary>
+        <dl id="artWhyList"></dl>
+      </details>
+    </section>
+
+    <section class="rail-block">
+      <h2 class="rail-title" id="dirTitle">设计方向</h2>
+      <div id="dirs" class="opt-list"></div>
+      <p id="dirNote" class="rail-note"></p>
+    </section>
+
+    <section class="rail-block" id="modeBlock">
+      <h2 class="rail-title">排版模式</h2>
+      <div id="modes" class="opt-list"></div>
+    </section>
+
+    <section class="rail-block" id="schemeBlock">
+      <h2 class="rail-title">方案</h2>
+      <div id="schemes" class="opt-list opt-list--tight"></div>
+    </section>
+
+    <section class="rail-block" id="blockDensity" hidden>
+      <h2 class="rail-title">松紧</h2>
+      <div id="densities" class="seg" role="group" aria-label="松紧">
+        <button type="button" data-density="tight">紧凑</button>
+        <button type="button" data-density="normal">标准</button>
+        <button type="button" data-density="airy">舒展</button>
+      </div>
+      <p id="densityNote" class="rail-note">松开一点，每页少放几张、页数变多。</p>
+    </section>
+
+    <section class="rail-block">
+      <h2 class="rail-title">张数</h2>
+      <div id="counts" class="seg" role="group" aria-label="张数">
+        <button type="button" data-count="9">九张</button>
+        <button type="button" data-count="11">十一张</button>
+      </div>
+      <p id="countNote" class="rail-note">九张 = 封面 + 四页/四跨页：朋友圈九图正好。</p>
+    </section>
+
+    <section class="rail-block">
+      <h2 class="rail-title">这本用到的照片</h2>
+      <p class="rail-note">点一张移出这本（可撤销，照片还在库里）。加照片用下面的「挑选照片」。</p>
+      <button id="btnPickPhotos" class="btn btn-ghost btn-wide" type="button">挑选照片</button>
+      <div id="tray" class="tray"></div>
+    </section>
+
+    <div class="rail-foot">
+      <button id="btnShuffle" class="btn btn-primary btn-wide" disabled>换一版编排</button>
+    </div>
+  </aside>
+
+  <section class="stage">
+    <div id="empty" class="empty">
+      <p class="empty-kicker">四十张照片，一本小书</p>
+      <h1 class="empty-title">把照片扔进来</h1>
+      <p class="empty-sub">本地处理，不上传。每张按原画幅落位，两页一组排成跨页；横图会跨过中缝，滑过去连成一整张。</p>
+      <div class="empty-actions">
+        <button class="btn btn-primary" id="btnPick">选择照片</button>
+        <button class="btn btn-ghost" id="btnDemo">先用示例照片看看</button>
+      </div>
+    </div>
+
+    <div id="zinePanel" class="zine-panel" hidden>
+      <div class="zine-head">
+        <h1 class="grid-title">作品集</h1>
+        <p id="zineNote" class="grid-note"></p>
+      </div>
+      <div id="zineList" class="zine-list"></div>
+      <p class="stage-hint">点任意一张照片：换图 / 删图 / 拖动调整显示的部分。点页面空白处放大看。</p>
+    </div>
+  </section>
+</main>
+
+<div id="picker" class="picker" hidden>
+  <div class="picker-card" role="dialog" aria-label="换一张">
+    <div class="picker-head" id="pickerHead">
+      <div>
+        <h2 id="pickerTitle" class="picker-title">换一张</h2>
+        <p id="pickerNote" class="picker-note"></p>
+      </div>
+      <button id="pickerClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div id="pickerCrop" class="picker-crop" hidden>
+      <div id="cropBox" class="crop-box"></div>
+      <p class="crop-hint">左右上下拖动，选这一段显示。</p>
+    </div>
+    <div id="pickerGrid" class="picker-grid"></div>
+  </div>
+</div>
+
+<div id="textPanel" class="picker textpanel" hidden>
+  <div class="picker-card" role="dialog" aria-label="文字">
+    <div class="picker-head">
+      <div>
+        <h2 class="picker-title">文字</h2>
+        <p class="picker-note" id="textNote">你自己写的字永远不会被 AI 覆盖。改完立刻重排。</p>
+      </div>
+      <button id="textClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+
+    <div class="text-body">
+      <label class="text-row text-row--block"><b>这组照片，你还记得什么？<span>一两句就够。它会作为你的记忆单独保存，优先级最高。</span></b>
+        <textarea id="textMemory" rows="2" spellcheck="false" placeholder="例：那天下午很冷，我们在码头等最后一班船。"></textarea>
+      </label>
+
+      <div class="text-row text-row--inline">
+        <b>文字风格</b>
+        <select id="textStyle" class="text-select"></select>
+        <label class="text-check"><input type="checkbox" id="textNoText"> 不要内容文字</label>
+      </div>
+
+      <div class="ai-block">
+        <div class="ai-head">
+          <button id="aiBtn" class="btn btn-primary">为这组照片寻找文字灵感</button>
+          <button id="aiAgain" class="btn btn-ghost" hidden>再来一组</button>
+          <button id="aiSetup" class="btn btn-ghost">检查连接</button>
+          <select id="aiModel" class="text-select text-select--sm" hidden aria-label="本地模型"></select>
+          <label class="text-check text-check--wide"><input type="checkbox" id="aiBoth"> 同时写进另一个设计方向</label>
+        </div>
+        <p id="aiStatus" class="ai-status" data-state="idle">本地文字助手：检查中…</p>
+        <div id="aiIdeas" class="ai-ideas"></div>
+        <details class="ai-help">
+          <summary>连不上？三步</summary>
+          <p><b>1. 用本地版打开</b>（线上 https 版永远连不到你电脑上的 Ollama）：
+            双击 memento 文件夹里的 <code>start-local.cmd</code>，它会打开
+             <code>http://127.0.0.1:8899/</code>，并把 Ollama 代理在同一个地址下。</p>
+          <p><b>2. 另开一个窗口启动模型</b>：<code>ollama serve</code></p>
+          <p><b>3. 想用更强的模型</b>：<code>ollama pull qwen2.5:7b</code>，然后在上面的模型下拉里选它。</p>
+          <p>连不上时按钮会给内置模板，其余功能照常。</p>
+        </details>
+      </div>
+
+      <label class="text-row"><b>书名</b><input id="textTitle" type="text" spellcheck="false"></label>
+      <label class="text-row"><b>年份</b><input id="textYear" type="number" min="1900" max="2100" step="1"></label>
+      <label class="text-row"><b>章节词</b><input id="textSections" type="text" spellcheck="false" placeholder="用逗号分开：光，风，途中"></label>
+      <label class="text-row text-row--block"><b>每页短句<span>一行一句，按顺序用在页面上</span></b>
+        <textarea id="textLines" rows="6" spellcheck="false"></textarea>
+      </label>
+    </div>
+
+    <div class="text-foot">
+      <button id="textReset" class="btn btn-ghost">恢复本方向的默认文字</button>
+      <button id="textDone" class="btn btn-primary">完成</button>
+    </div>
+  </div>
+</div>
+
+<div id="lightbox" class="lightbox" hidden>
+  <button class="lb-close" id="lbClose" aria-label="关闭">✕</button>
+  <div class="lb-nav">
+    <button id="lbPrev" aria-label="上一页">‹</button>
+    <span id="lbCount"></span>
+    <button id="lbNext" aria-label="下一页">›</button>
+  </div>
+  <div id="lbStage" class="lb-stage"></div>
+</div>
+
+<input type="file" id="fileInput" accept="image/*" multiple hidden>
+<div id="saved" class="saved" hidden>
+  <div class="saved-card">
+    <div class="saved-head">
+      <div>
+        <h2 id="savedTitle" class="saved-title">已经做好九张</h2>
+        <p id="savedNote" class="saved-note"></p>
+      </div>
+      <button id="savedClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div id="savedGrid" class="saved-grid"></div>
+  </div>
+</div>
+
+<div id="versions" class="saved" hidden>
+  <div class="saved-card vcard">
+    <div class="saved-head">
+      <div>
+        <h2 class="saved-title">版本历史</h2>
+        <p id="verNote" class="saved-note">每一版都是一个快照；恢复旧版不会删掉任何一版。</p>
+      </div>
+      <button id="verClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="ver-new">
+      <input id="verName" class="ver-input" placeholder="这一版叫什么？（可以不填）" maxlength="40">
+      <button id="verSave" class="btn btn-primary">保存为新版本</button>
+    </div>
+    <div id="verList" class="ver-list"></div>
+  </div>
+</div>
+
+<div id="library" class="saved" hidden>
+  <div class="saved-card libcard">
+    <div class="saved-head">
+      <div>
+        <h2 class="saved-title">我的书</h2>
+        <p id="libNote" class="saved-note">每本作品有自己的版本；照片存在照片库里，删作品不会删照片。</p>
+      </div>
+      <button id="libClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="lib-tools">
+      <button id="libNewMem" class="btn btn-primary">＋ 回忆册</button>
+      <button id="libNewSocial" class="btn btn-ghost">＋ 作品</button>
+      <button id="libBackup" class="btn btn-ghost">导出全部备份</button>
+      <button id="libImport" class="btn btn-ghost">导入备份</button>
+      <span id="libQuota" class="lib-quota"></span>
+    </div>
+    <p id="quotaWarn" class="quota-warn" hidden></p>
+    <div id="libList" class="lib-list"></div>
+  </div>
+</div>
+
+
+
+<div id="newbook" class="saved" hidden>
+  <div class="saved-card nbcard">
+    <div class="saved-head">
+      <div>
+        <h2 class="saved-title">新建一本</h2>
+        <p class="saved-note" id="nbHint">选照片 → 做成回忆册或九图作品。可以跨集合挑。</p>
+      </div>
+      <button id="nbClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="nb-body">
+      <aside id="nbColls" class="nb-colls"></aside>
+      <section class="nb-main">
+        <div class="nb-tools">
+          <button id="nbAll" class="btn btn-ghost btn-sm">全选本组</button>
+          <button id="nbNone" class="btn btn-ghost btn-sm">全不选</button>
+          <span id="nbCount" class="lib-quota">已选 0 张</span>
+        </div>
+        <div id="nbPhotos" class="nb-grid"></div>
+      </section>
+    </div>
+    <div class="nb-foot">
+      <button id="nbMemory" class="btn btn-ghost">做成回忆册</button>
+      <button id="nbSocial" class="btn btn-primary">做成九图作品</button>
+    </div>
+  </div>
+</div>
+
+<div id="colls" class="saved" hidden>
+  <div class="saved-card collcard">
+    <div class="saved-head">
+      <div>
+        <h2 class="saved-title">照片集合</h2>
+        <p class="saved-note">一次导入的一批照片就是一个集合。集合只是整理方式 —— 删集合不会删照片，也不会动已经做好的书。</p>
+      </div>
+      <button id="collClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="lib-tools">
+      <button id="collNew" class="btn btn-primary">＋ 新集合</button>
+      <button id="collImport" class="btn btn-ghost">导入照片</button>
+      <div class="seg seg--sm" id="collTabs" role="group">
+        <button type="button" data-tab="colls" aria-pressed="true">集合</button>
+        <button type="button" data-tab="all" aria-pressed="false">全部照片</button>
+      </div>
+    </div>
+    <div id="collBody"></div>
+  </div>
+</div>
+
+<div id="photoLib" class="saved" hidden>
+  <div class="saved-card plibcard">
+    <div class="saved-head">
+      <div>
+        <h2 class="saved-title">照片库</h2>
+        <p id="plibNote" class="saved-note">这里存的是<strong>适合网页创作的处理版本</strong>（长边 2000px WebP），不是你的原图备份 —— 原图请留在手机或网盘里。</p>
+      </div>
+      <button id="plibClose" class="picker-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="lib-tools">
+      <div class="seg seg--sm" id="plibFilter" role="group">
+        <button type="button" data-filter="all">全部</button>
+        <button type="button" data-filter="in">在这本</button>
+        <button type="button" data-filter="out">没在这本</button>
+        <button type="button" data-filter="star">★ 收藏</button>
+      </div>
+      <button id="plibAll" class="btn btn-ghost">全选</button>
+      <button id="plibNone" class="btn btn-ghost">全不选</button>
+      <span id="plibCount" class="lib-quota"></span>
+    </div>
+    <div id="plibGrid" class="plib-grid"></div>
+  </div>
+</div>
+
+<input type="file" id="backupInput" accept=".memento,.zip" hidden>
+<div id="toast" class="toast" hidden></div>
+
+<script src="js/analyze.js?v=20261105g"></script>
+<script src="js/storage.js?v=20261105g"></script>
+<script src="js/objects.js?v=20261105g"></script>
+<script src="js/engine.js?v=20261105g"></script>
+<script src="js/spread.js?v=20261105g"></script>
+<script src="js/compose.js?v=20261105g"></script>
+<script src="js/art.js?v=20261105g"></script>
+  <script src="js/observe.js?v=20261105g"></script>
+<script src="js/timeline.js?v=20261105g"></script>
+<script src="js/text.js?v=20261105g"></script>
+<script src="js/render.js?v=20261105g"></script>
+<script src="js/export.js?v=20261105g"></script>
+<script src="js/backup.js?v=20261105g"></script>
+<script src="js/ai/schemas.js?v=20261105g"></script>
+<script src="js/ai/prompts.js?v=20261105g"></script>
+<script src="js/ai/ollama.js?v=20261105g"></script>
+<script src="js/ai/provider.js?v=20261105g"></script>
+<script src="js/ai/editorial.js?v=20261105g"></script>
+<script src="js/collections.js?v=20261105g"></script>
+<script src="js/newbook.js?v=20261105g"></script>
+<script src="js/app.js?v=20261105g"></script>
+</body>
+</html>

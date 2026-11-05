@@ -9,6 +9,10 @@
     title: '十一月的海', year: new Date().getFullYear(), busy: false, locked: {},
     direction: 'zine', texts: {},
     library: [],          // every photo in the browser database
+    brief: {              // art direction v2 (the five dimensions)
+      rhythm: 'crescendo', density: 'balanced', composition: 'flexible',
+      type: 'captions', length: { targetPages: null }
+    },
     coverPhoto: null
   };
 
@@ -878,10 +882,16 @@
 
     if (state.engine === 'art' && M.ART) {
       var t = textFor(state.direction);
-      state.zine = M.ART.compose(state.photos, {
-        seed: state.seed, title: t.title || '未命名的一卷', year: state.year,
-        lines: t.lines, head: t.sections && t.sections[0]
-      });
+      var usePlan = M.ART.composePlan && state.brief;
+      state.zine = usePlan
+        ? M.ART.composePlan(state.photos, {
+            seed: state.seed, title: t.title || '未命名的一卷', year: state.year,
+            lines: t.lines, sections: t.sections, brief: state.brief
+          })
+        : M.ART.compose(state.photos, {
+            seed: state.seed, title: t.title || '未命名的一卷', year: state.year,
+            lines: t.lines, head: t.sections && t.sections[0]
+          });
       state.zine.art = true;
       paintZine();
       scheduleSave();
@@ -2275,6 +2285,13 @@
     },
     art: function () { return M.ART; },
     setEngine: function (e) { state.engine = e; buildRail(); rebuild(); },
+    setBrief: function (b) {
+      state.brief = Object.assign({}, state.brief || {}, b || {});
+      if (state.engine !== 'art') { state.engine = 'art'; buildRail(); }
+      rebuild();
+      return state.brief;
+    },
+    plan: function () { return state.zine && state.zine.plan ? state.zine.plan : null; },
     engine: function () { return state.engine; },
     report: function () { return { photos: state.photos.length, library: state.library.length, save: el.saveState ? el.saveState.dataset.state : '', obj: M.OBJ.stats() }; }
   };
