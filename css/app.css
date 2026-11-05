@@ -597,3 +597,6 @@ body.solo-mode .page-wrap{margin:0}
   font-size:11px;color:#fff;background:rgba(176,69,43,.92)}
 .nb-cell:not(.on) .nb-tick{background:rgba(26,24,21,.32)}
 .nb-foot{display:flex;gap:10px;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--line)}
+
+/* dev build stamp: proof of which files the page actually loaded */
+.buildStamp{margin-left:auto;font-size:10px;letter-spacing:.08em;color:var(--faint);align-self:center;padding-right:6px}

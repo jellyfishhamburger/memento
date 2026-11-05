@@ -302,9 +302,16 @@ window.MEM = window.MEM || {};
   function render() {
     if (!body) return;
     body.innerHTML = '';
-    if (openColl) return renderOne(openColl);
-    if (tab === 'all') return renderAll();
-    return renderColls();
+    try {
+      if (openColl) return renderOne(openColl);
+      if (tab === 'all') return renderAll();
+      return renderColls();
+    } catch (e) {
+      // never leave the dialog blank: say what broke, and which build is loaded
+      body.innerHTML = '<p class="coll-empty">这一页没画出来：' + esc(String(e && e.message || e)) +
+        '<br>多半是浏览器在跑旧文件 —— 关掉标签页重开，或按 Ctrl+F5。</p>';
+      console.error('[collections]', e);
+    }
   }
 
   function setTab(next) {
@@ -319,7 +326,12 @@ window.MEM = window.MEM || {};
   async function open() {
     if (!modal) return;
     modal.hidden = false;
-    await refresh();
+    body.innerHTML = '<p class="coll-empty">正在读取…</p>';
+    try { await refresh(); } catch (e) {
+      body.innerHTML = '<p class="coll-empty">读不到集合数据：' + esc(String(e && e.message || e)) +
+        '<br>如果刚升级过，先关掉其它同样开着 MEMENTO 的标签页再试。</p>';
+      return;
+    }
     render();
   }
 
@@ -335,8 +347,12 @@ window.MEM = window.MEM || {};
 
     var imp = el('collImport');
     if (imp) imp.onclick = function () {
-      if (window.__mem && window.__mem.pickFiles) window.__mem.pickFiles(openColl);
-      else if (window.__mem && window.__mem.state) document.getElementById('fileInput').click();
+      var input = document.getElementById('fileInput');
+      if (window.__mem && window.__mem.pickFiles) { window.__mem.pickFiles(openColl); return; }
+      if (input) {
+        window.__fallbackImportTarget = openColl;
+        input.click();
+      }
     };
     document.addEventListener('memento:imported', function () {
       if (!modal || modal.hidden) return;
