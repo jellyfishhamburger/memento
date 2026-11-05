@@ -12,7 +12,8 @@
     coverPhoto: null
   };
 
-  var batchName = '';      /* the name of the collection this import went into */
+  var batchName = '';
+  var importTarget = null;      // collection id when importing from inside a collection      /* the name of the collection this import went into */
 
   var MODES = [
     { key: 'A', name: '编辑杂志', note: '单页构图：主图 + 细节，大片留白' },
@@ -563,7 +564,14 @@
       } catch (e) { failed++; }
       if (i % 3 === 2) setStat('正在读 ' + (i + 1) + ' / ' + list.length + '…');
     }
-    await batchCollection(made);
+    if (importTarget && M.STORE.addToCollection && made.length) {
+      await M.STORE.addToCollection(importTarget, made.map(function (r) { return r.id; }));
+      batchName = '';
+      importTarget = null;
+      document.dispatchEvent(new CustomEvent('memento:imported'));
+    } else {
+      await batchCollection(made);
+    }
     try { await M.STORE.reconcileCollections(); } catch (e) {}
     buildTray(); rebuild();
     state.coverPhoto = null;
@@ -1390,6 +1398,7 @@
     buildRail(); rebuild();
   });
   el.btnImport.onclick = el.btnPick.onclick = function () { el.file.click(); };
+  window.__memPickFiles = function (collId) { importTarget = collId || null; el.file.click(); };
   el.file.onchange = function (e) { addFiles(e.target.files); el.file.value = ''; };
   el.btnDemo.onclick = loadDemo;
   el.btnPDF.onclick = function () { doExport('pdf'); };
@@ -2243,6 +2252,10 @@
     openVersions: openVersions, saveNewVersion: saveNewVersion, restoreVersion: restoreVersion,
     project: function () { return project; }, loadLibrary: loadLibrary,
     createBook: createBook, applyBookHeroes: applyBookHeroes,
+    pickFiles: function (collId) {
+      importTarget = collId || null;
+      el.file.click();
+    },
     art: function () { return M.ART; },
     setEngine: function (e) { state.engine = e; buildRail(); rebuild(); },
     engine: function () { return state.engine; },

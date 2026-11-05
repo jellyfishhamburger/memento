@@ -73,9 +73,16 @@ window.MEM = window.MEM || {};
     });
 
     if (!cache.collections.length) {
-      var empty = document.createElement('p');
-      empty.className = 'coll-empty';
-      empty.textContent = '还没有集合。导入一批照片时会自动建一个；也可以点「＋ 新集合」手动建。';
+      var empty = document.createElement('div');
+      empty.className = 'coll-empty coll-empty-box';
+      var msg = cache.photos.length
+        ? '还没有集合。点「导入照片」会自动建一个，也可以先「＋ 新集合」再往里加。'
+        : '照片库还是空的。点上面的「导入照片」选一批照片，它们会自动归成一个集合。';
+      empty.innerHTML = '<p>' + msg + '</p>' +
+        '<button class="btn btn-primary" data-import="1">导入照片</button>';
+      empty.querySelector('[data-import]').onclick = function () {
+        if (window.__mem && window.__mem.pickFiles) window.__mem.pickFiles(null);
+      };
       wrap.appendChild(empty);
     }
     body.appendChild(wrap);
@@ -244,7 +251,10 @@ window.MEM = window.MEM || {};
     var have = {};
     links.forEach(function (l) { have[l.photoId] = 1; });
     var pool = cache.photos.filter(function (p) { return !have[p.id]; });
-    if (!pool.length) { toast('所有照片都已经在这个集合里了'); return; }
+    if (!pool.length) {
+      toast(cache.photos.length ? '所有照片都已经在这个集合里了' : '照片库还是空的，先导入照片');
+      return;
+    }
 
     var chosen = {};
     var overlay = document.createElement('div');
@@ -323,6 +333,15 @@ window.MEM = window.MEM || {};
     count = el('collCount');
     newBtn = el('collNew');
 
+    var imp = el('collImport');
+    if (imp) imp.onclick = function () {
+      if (window.__mem && window.__mem.pickFiles) window.__mem.pickFiles(openColl);
+      else if (window.__mem && window.__mem.state) document.getElementById('fileInput').click();
+    };
+    document.addEventListener('memento:imported', function () {
+      if (!modal || modal.hidden) return;
+      refresh().then(render);
+    });
     el('collClose').onclick = close;
     modal.onclick = function (e) { if (e.target === modal) close(); };
     Array.prototype.forEach.call(tabs.children, function (b) {
