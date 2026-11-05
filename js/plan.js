@@ -114,10 +114,33 @@ window.MEM = window.MEM || {};
   /* the hard constraints from the design doc */
   function satisfy(plan, opts) {
     var n = plan.length;
+    var allowed = (opts && opts.allowed) || Object.keys(DEVICES);
+
+    /* pick a device for this page that is not one of the two before it and
+       whose intensity window is closest — "换成版心单图" can itself make a triple */
+    function repair(i) {
+      var skip = [plan[i - 1].device, plan[i - 2].device];
+      var cands = allowed.filter(function (k) {
+        return DEVICES[k] && skip.indexOf(k) < 0 && k !== 'breath' && k !== 'divider';
+      });
+      if (!cands.length) return 'plate';
+      cands.sort(function (a, b) {
+        var da = DEVICES[a], db = DEVICES[b], v = plan[i].I;
+        var fa = Math.abs(v - (da.I[0] + da.I[1]) / 2) + (v < da.I[0] ? (da.I[0] - v) : 0) + (v > da.I[1] ? (v - da.I[1]) : 0);
+        var fb = Math.abs(v - (db.I[0] + db.I[1]) / 2) + (v < db.I[0] ? (db.I[0] - v) : 0) + (v > db.I[1] ? (v - db.I[1]) : 0);
+        return fa - fb;
+      });
+      return cands[0];
+    }
+
     for (var i = 1; i < n; i++) {
       /* no three of the same device in a row */
       if (i >= 2 && plan[i].device === plan[i - 1].device && plan[i].device === plan[i - 2].device) {
-        plan[i] = Object.assign({}, plan[i], { device: 'plate', reason: plan[i].reason + '（同装置连三，换成版心单图）' });
+        var alt = repair(i);
+        plan[i] = Object.assign({}, plan[i], {
+          device: alt, name: DEVICES[alt].name,
+          reason: plan[i].reason + '（同装置连三，换成' + DEVICES[alt].name + '）'
+        });
       }
       /* breaths never adjacent */
       if (plan[i].device === 'breath' && plan[i - 1].device === 'breath') {
@@ -167,34 +190,16 @@ window.MEM = window.MEM || {};
     return { plan: plan, used: sum() };
   }
 
-  /* the whole plan */
-  function plan(photoCount, brief) {
-    brief = brief || {};
-    var rhythm = STRUCTURES[brief.rhythm] ? brief.rhythm : 'crescendo';
-    var comp = brief.composition || 'flexible';
-    var allowed = ALLOWED[comp] || ALLOWED.flexible;
-    var kind = brief.kind || 'memory';
-
-    var target = brief.length && brief.length.targetPages
-      ? snap4(brief.length.targetPages)
-      : suggestPages(photoCount, kind);
-
-    var I = STRUCTURES[rhythm].curve(target);
-
-    /* density shifts the device mix, it does not change the curve */
-    var density = brief.density || 'balanced';
-    var mix = {
-      minimal: { breath: 5, prefer: ['plate', 'full', 'type', 'diptych'] },
-      balanced: { breath: 10, prefer: ['plate', 'diptych', 'contact', 'strip', 'full'] },
-      rich: { breath: 16, prefer: ['contact', 'diptych', 'strip', 'full', 'clash'] }
-    }[density] || { breath: 10, prefer: [] };
-
+  /* build the page list for one page budget (structure curve → devices → constraints) */
+  function assemble(target, cfg) {
+    var I = STRUCTURES[cfg.rhythm].curve(target);
+    var allowed = cfg.allowed, mix = cfg.mix;
     var pages = I.map(function (v, i) {
       var device = deviceFor(v, allowed.filter(function (k) {
         if (k === 'breath') return i % mix.breath === mix.breath - 1 && i > 2 && i < target - 2;
         if (k === 'divider') return i > 0 && i % 12 === 0;
         return true;
-      }), { avoid: i > 1 ? [pages ? pages[pages.length - 1] : ''] : [] });
+      }), {});
       return {
         i: i, I: +v.toFixed(2), device: device,
         name: DEVICES[device].name,
@@ -202,8 +207,7 @@ window.MEM = window.MEM || {};
       };
     });
 
-    /* section dividers: a reset every 12 pages — but never on top of a peak.
-       Walk to the nearest page that is already quiet, otherwise skip it. */
+    /* section dividers: a reset every 12 pages — but never on top of a peak */
     if (target >= 16) {
       for (var d = 12; d < target - 1; d += 12) {
         var spot = -1;
@@ -221,24 +225,57 @@ window.MEM = window.MEM || {};
       }
     }
 
-    pages = satisfy(pages, { target: target });
-    var alloc = allocate(pages, photoCount);
+    pages = satisfy(pages, { target: target, allowed: allowed });
+    var alloc = allocate(pages, cfg.photoCount);
+    return { target: target, I: I, pages: alloc.plan, used: alloc.used };
+  }
+
+  /* the whole plan.
+     An automatic page count grows until the book can actually hold the photographs:
+     a plan that leaves seven on the floor is not a plan, it is an apology. */
+  function plan(photoCount, brief) {
+    brief = brief || {};
+    var rhythm = STRUCTURES[brief.rhythm] ? brief.rhythm : 'crescendo';
+    var comp = brief.composition || 'flexible';
+    var allowed = ALLOWED[comp] || ALLOWED.flexible;
+    var kind = brief.kind || 'memory';
+    var density = brief.density || 'balanced';
+    var mix = {
+      minimal: { breath: 5, prefer: ['plate', 'full', 'type', 'diptych'] },
+      balanced: { breath: 10, prefer: ['plate', 'diptych', 'contact', 'strip', 'full'] },
+      rich: { breath: 16, prefer: ['contact', 'diptych', 'strip', 'full', 'clash'] }
+    }[density] || { breath: 10, prefer: [] };
+
+    var explicit = !!(brief.length && brief.length.targetPages);
+    /* pages snap to the 4-page signature, even when the count is automatic */
+    var start = snap4(explicit ? brief.length.targetPages : suggestPages(photoCount, kind));
+    var cfg = { rhythm: rhythm, allowed: allowed, mix: mix, photoCount: photoCount };
+
+    var best = assemble(start, cfg);
+    if (!explicit) {
+      var guard = 0;
+      while (best.used < photoCount && best.target < 64 && guard++ < 20) {
+        best = assemble(best.target + 4, cfg);
+      }
+    }
 
     return {
       rhythm: rhythm, rhythmName: STRUCTURES[rhythm].name, why: STRUCTURES[rhythm].why,
       density: density, composition: comp, kind: kind,
-      targetPages: target, I: I, pages: alloc.plan, used: alloc.used,
-      advise: advise(photoCount, target, alloc.used, kind)
+      targetPages: best.target, I: best.I, pages: best.pages, used: best.used,
+      explicit: explicit,
+      advise: advise(photoCount, best.target, best.used, kind, explicit)
     };
   }
 
   /* never silently change the page count: say what would happen instead */
-  function advise(photos, target, used, kind) {
+  function advise(photos, target, used, kind, explicit) {
     if (used === photos) return null;
     if (used < photos) {
       return '这个页数放不下全部 ' + photos + ' 张（排进去 ' + used + ' 张）。' +
         '建议加到 ' + snap4(target + Math.ceil((photos - used) / 3)) + ' 页，或者减少选片。';
     }
+    if (!explicit) return null;      // an automatic plan that has room is not a problem
     return '按 ' + target + ' 页排完还空 ' + (used - photos) + ' 张的量，建议减到 ' +
       snap4(target - Math.ceil((used - photos) / 3)) + ' 页。';
   }

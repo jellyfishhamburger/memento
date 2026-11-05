@@ -75,6 +75,28 @@ button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer}
 .rail-note{margin:0;font-size:11.5px;color:var(--faint);line-height:1.45}
 .rail-foot{margin-top:auto;padding-top:14px}
 
+/* ---------- art direction v2: the five dimensions ---------- */
+.rail-sub{margin:2px 0 -3px;font-size:10.5px;letter-spacing:.06em;color:var(--faint)}
+.art-length{display:flex;align-items:center;gap:8px}
+.art-length input[type=range]{flex:1;min-width:0;accent-color:var(--ink);height:18px}
+.art-length b{font-size:11.5px;font-weight:500;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.art-len-auto{
+  flex:none;height:22px;padding:0 7px;font-size:10.5px;letter-spacing:.06em;color:var(--faint);
+  background:transparent;border:1px solid var(--line);border-radius:2px;cursor:pointer;
+}
+.art-len-auto[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.art-len-auto:hover{color:var(--ink);border-color:var(--line-2)}
+.art-len-auto[aria-pressed="true"]:hover{color:var(--paper)}
+
+/* one bar per page: height = intensity, shade = device */
+.art-curve{display:flex;align-items:flex-end;gap:1.5px;height:34px;padding:3px 0 0;border-bottom:1px solid var(--line)}
+.art-bar{flex:1 1 0;min-width:1.5px;display:block;background:var(--line-2);border-radius:1px 1px 0 0}
+.art-bar[data-k="full"],.art-bar[data-k="gutter"]{background:var(--ink)}
+.art-bar[data-k="contact"],.art-bar[data-k="clash"]{background:#6b6355}
+.art-bar[data-k="diptych"],.art-bar[data-k="strip"]{background:#9a9384}
+.art-bar[data-k="plate"],.art-bar[data-k="type"]{background:#c0b8a7}
+.art-bar[data-k="breath"],.art-bar[data-k="divider"]{background:transparent;box-shadow:inset 0 0 0 1px var(--line-2)}
+
 .opt-list{display:flex;flex-direction:column;gap:1px}
 .opt{
   display:flex;align-items:center;gap:9px;width:100%;text-align:left;

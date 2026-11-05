@@ -253,7 +253,7 @@ window.MEM = window.MEM || {};
     return {
       cols: cols, colW: colW, gutter: gut, outer: outer,
       x: function (c) { return outer + c * (colW + gut); },
-      w: function (n) { return n * colW + (n - 1) * gut; },
+      w: function (n) { n = Math.max(1, Math.min(n, cols)); return n * colW + (n - 1) * gut; },
       top: outer, bottom: PH - outer, contentW: contentW
     };
   }
@@ -265,12 +265,42 @@ window.MEM = window.MEM || {};
       crop: M.cropFor(photo, w - pad * 2, h - pad * 2, opt.focal)
     });
   }
+  /* the model must know how many lines a text takes: settleText reasons about
+     its height, and the renderer wraps to the same width. One measure, both sides. */
+  var _measure = null;
+  function measureCtx() {
+    if (!_measure) _measure = document.createElement('canvas').getContext('2d');
+    return _measure;
+  }
+  function wrapArt(text, w, size, family, weight, tracking) {
+    var ctx = measureCtx();
+    ctx.font = (weight || 400) + ' ' + size + 'px ' + family;
+    var track = tracking || 0;
+    function m(str) { return ctx.measureText(str).width + Math.max(0, str.length - 1) * track; }
+    var out = [];
+    String(text == null ? '' : text).split('\n').forEach(function (para) {
+      var tokens = String(para).match(/[\u3000-\u9fff\uff00-\uffef]|[^\s\u3000-\u9fff\uff00-\uffef]+|\s+/g) || [''];
+      var cur = '';
+      tokens.forEach(function (tk) {
+        if (!cur || m(cur + tk) <= w) { cur += tk; return; }
+        if (/^[，。、；：！？）」』】,.;:!?)]$/.test(tk)) { cur += tk; out.push(cur.replace(/\s+$/, '')); cur = ''; return; }
+        out.push(cur.replace(/\s+$/, ''));
+        cur = tk.trim() ? tk : '';
+      });
+      var last = cur.replace(/\s+$/, '');
+      if (last) out.push(last);
+    });
+    return out;
+  }
+
   function typeBlock(pg, d, o) {
     var face = d.type.face === 'serif' ? SERIF : GROTESK;
     var size = o.size * d.type.scale;
+    var fam = o.family || face;
+    var lines = o.nowrap ? String(o.text).split('\n') : wrapArt(o.text, o.w, size, fam, o.weight, o.tracking == null ? d.type.tracking : o.tracking);
     pg.texts.push({
-      x: o.x, y: o.y, w: o.w, lines: String(o.text).split('\n'),
-      size: size, family: o.family || face, weight: o.weight || 400,
+      x: o.x, y: o.y, w: o.w, lines: lines,
+      size: size, family: fam, weight: o.weight || 400,
       color: o.color || (o.onDark ? '#fff' : INK), align: o.align || 'left',
       tracking: (o.tracking == null ? d.type.tracking : o.tracking),
       lineHeight: o.lh || 1.35, opacity: o.opacity == null ? 1 : o.opacity,
@@ -398,7 +428,8 @@ window.MEM = window.MEM || {};
     /* D5 对页对抗: one loud, one small, placed to argue with each other. */
     clash: function (photos, d, g, ctx) {
       var pg = page();
-      var a = photos[0], b = photos[1] || photos[0];
+      var a = photos[0], b = photos[1];
+      if (!b) b = a;
       var bigH = (g.bottom - g.top) * 0.62;
       var bigW = Math.min(g.contentW * 0.72, bigH * (a.ar || 1));
       put(pg, a, g.x(0), g.top + 20, bigW, bigW / (a.ar || 1), { role: 'detail' });
@@ -549,36 +580,38 @@ window.MEM = window.MEM || {};
     'type-led': function (photos, d, g, ctx) {
       var pg = page();
       var headline = ctx.head || ctx.line || '';
-      var size = 62 + ctx.rand() * 46;
-      var tx = ctx.rand() < 0.25 ? g.x(1) : g.x(0);
+      var contentH = g.bottom - g.top;
+      var size = 44 + ctx.rand() * 20;                 // 44–64: a headline, not a poster
+      var wTxt = g.w(Math.min(g.cols - 2, 7));
+      /* the line owns the top band; its wrapped height is known here, so the
+         photograph below can be placed against it instead of under it */
+      var tb = { x: g.x(0), y: g.top + 24, w: wTxt, size: size, text: headline, lh: 1.24, keepSize: true };
+      typeBlock(pg, d, tb);
+      var head = pg.texts[pg.texts.length - 1];
+      var headH = head.size * head.lines.length * head.lineHeight;
       typeBlock(pg, d, {
-        x: tx, y: g.top + (g.bottom - g.top) * 0.12,
-        w: g.w(Math.min(g.cols - 1, 7)), size: size, text: headline, lh: 1.22, keepSize: true
+        x: g.x(0), y: g.top + 24 + headH + 18, w: g.w(Math.min(4, g.cols)),
+        size: 11, tracking: 5, text: ctx.plate || '', color: MUTED
       });
-      typeBlock(pg, d, {
-        x: g.x(0), y: g.top + (g.bottom - g.top) * 0.12 + size * 1.3,
-        w: g.w(Math.min(5, g.cols)), size: 11, tracking: 5, text: ctx.plate || '', color: MUTED
-      });
-      /* the picture answers the line from the lower half — it never grows into
-         the type, which is what used to squeeze the headline down to nothing */
-      var cap = (g.bottom - g.top) * 0.42;
+
+      var bandTop = g.top + 24 + headH + 70;
+      var bandH = g.bottom - bandTop;
       var p = photos[0];
-      if (p) {
-        var w = g.w(Math.min(5, g.cols)) * (0.7 + ctx.rand() * 0.3);
+      if (p && bandH > 120) {
+        var w = Math.min(g.w(Math.min(5, g.cols)), bandH * 0.95 * (p.ar || 1));
         var h = w / (p.ar || 1);
-        if (h > cap) { h = cap; w = h * (p.ar || 1); }
-        put(pg, p, g.x(g.cols) - w + g.outer - g.outer, g.bottom - h - (ctx.rand() < 0.4 ? 0 : 30), w, h);
+        if (h > bandH) { h = bandH; w = h * (p.ar || 1); }
+        put(pg, p, g.x(0) + g.contentW - w, g.bottom - h, w, h);
       }
-      if (photos[1]) {
-        var w2 = g.w(Math.min(3, g.cols)) * 0.8;
+      if (photos[1] && bandH > 120) {
+        var w2 = Math.min(g.w(Math.min(3, g.cols)) * 0.8, bandH * 0.6 * (photos[1].ar || 1));
         var h2 = w2 / (photos[1].ar || 1);
-        if (h2 > cap * 0.8) { h2 = cap * 0.8; w2 = h2 * (photos[1].ar || 1); }
-        put(pg, photos[1], g.x(0), g.bottom - h2 - 40, w2, h2);
+        if (h2 > bandH * 0.62) { h2 = bandH * 0.62; w2 = h2 * (photos[1].ar || 1); }
+        put(pg, photos[1], g.x(0), g.bottom - h2, w2, h2);
       }
       return { pg: pg, params: { size: Math.round(size), lead: headline.slice(0, 12) }, family: 'type-led' };
     },
 
-    /* prints laid over each other, cropped, filling the page */
     collage: function (photos, d, g, ctx) {
       var pg = page();
       var n = Math.min(photos.length, 7);
@@ -827,15 +860,20 @@ window.MEM = window.MEM || {};
       density: brief.density || 'balanced',
       composition: brief.composition || 'flexible',
       kind: brief.kind || 'memory',
-      length: { targetPages: Math.max(6, (brief.length && brief.length.targetPages) || M.PLAN.suggestPages(list.length, brief.kind)) },
+      /* an empty target means "let the plan size the book from the material" */
+      length: { targetPages: (brief.length && brief.length.targetPages) || null },
       cover: true
     };
     var P = M.PLAN.plan(list.length, planBrief);
 
     var byHero = list.slice().sort(function (a, b) { return (b.hero || 0) - (a.hero || 0); });
-    var starPool = byHero.slice(0, Math.max(2, Math.round(list.length * 0.25)));
-    var restPool = byHero.slice(starPool.length);
-    var coverPhoto = starPool.shift() || list[0];
+    var coverPhoto = byHero[0];
+    var pool = byHero.slice(1);
+    /* the loud pages get the strongest photographs, wherever they sit in the book */
+    var heroFor = {};
+    P.pages.forEach(function (it) {
+      if ((it.device === 'full' || it.device === 'gutter') && pool.length) heroFor[it.i] = [pool.shift()];
+    });
 
     var pages = [], log = [], usedLines = 0;
     var lines = (opt.lines || []).slice();
@@ -849,18 +887,15 @@ window.MEM = window.MEM || {};
       if (fam === 'type-led' && !((opt.sections && opt.sections[pi]) || (lines.length && item.device === 'type'))) fam = 'single';
       var fn = FAMILIES[fam] || FAMILIES.single;
       var n = item.n;
-      var chunk = [];
-      if (fam === 'full' || fam === 'gutter') {
-        chunk = [starPool.shift() || restPool.shift()].filter(Boolean);
-      } else if (fam === 'clash') {
-        chunk = [starPool.shift() || restPool.shift(), restPool.shift()].filter(Boolean);
-      } else if (n > 0) {
-        for (var k = 0; k < n; k++) {
-          var pick = restPool.shift() || starPool.shift();
-          if (pick) chunk.push(pick);
-        }
+      var chunk = heroFor[item.i] ? heroFor[item.i].slice() : (n > 0 ? pool.splice(0, n) : []);
+      /* the plan wanted a picture and the envelope is empty: keep the page,
+         but make it a text page instead of silently dropping it (page numbers
+         must still match the plan) */
+      if (fam !== 'blank' && fam !== 'divider' && !chunk.length) {
+        fam = 'divider'; n = 0; fn = FAMILIES.divider;
       }
-      if (fam !== 'blank' && fam !== 'divider' && !chunk.length) return;
+      /* a two-up or a clash with one photograph would print the same picture twice */
+      if ((fam === 'diptych' || fam === 'clash') && chunk.length === 1) { fam = 'single'; fn = FAMILIES.single; }
 
       var typeMode = (brief.type || 'captions');
       var wantsText =
@@ -878,7 +913,9 @@ window.MEM = window.MEM || {};
         plate: 'PLATE ' + (pi + 1 < 10 ? '0' : '') + (pi + 1),
         section: pi === 0
       });
-      if (built.family !== 'blank' && built.family !== 'divider') {
+      /* text-led pages are composed around the type: scaling the picture to hit a
+         coverage number is exactly what pushes it up into the headline */
+      if (built.family !== 'blank' && built.family !== 'divider' && built.family !== 'type-led') {
         fitCoverage(built.pg, DEVICE_COV(item.device, dir), dir.temperament === 'loud');
       }
       settleText(built.pg, dir, g);
@@ -891,7 +928,7 @@ window.MEM = window.MEM || {};
       });
     });
 
-    var left = starPool.concat(restPool);
+    var left = pool;
     if (left.length) {
       var extra = FAMILIES.wall(left.slice(0, 9), dir, g, { rand: rand, plate: 'PLATE ' + (pages.length + 2) });
       fitCoverage(extra.pg, dir.coverage, false);

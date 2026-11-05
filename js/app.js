@@ -33,6 +33,122 @@
     { key: 'jp', name: '日式小书', note: '宽边距、小字、一页一个主意；开场 → 展开 → 跨页高潮 → 收尾。',
       artName: '日式细字', artNote: '小字、宽边距，只借它的文字语气，版式仍由画像决定。' }
   ];
+  /* the five dimensions of the art director, in plain words.
+     Each option says what it changes, because "experimental" that means "rotated 8 degrees" is a lie. */
+  var ART_STRUCT = [
+    { k: 'longTake', n: '长镜头', note: '一页一页待在同一处，七成处给一张满版；前面越安静，那一击越响。' },
+    { k: 'crescendo', n: '渐强链', note: '每三四页一个小峰，六成一次大峰，八成半再一个；像连串渐强。' },
+    { k: 'intercut', n: '交错', note: '成对翻页，密度平稳；意义从左右并置里长出来。' },
+    { k: 'jumpCut', n: '跳切', note: '不铺垫，尺度和内容突然换；陌生、不安，适合街头与夜晚。' }
+  ];
+  var ART_DENS = [
+    { k: 'minimal', n: '极简' },
+    { k: 'balanced', n: '平衡' },
+    { k: 'rich', n: '丰富' }
+  ];
+  var ART_COMP = [
+    { k: 'restrained', n: '克制' },
+    { k: 'flexible', n: '灵活' },
+    { k: 'experimental', n: '实验' }
+  ];
+  var ART_TYPE = [
+    { k: 'photo-only', n: '纯摄影' },
+    { k: 'captions', n: '脚注' },
+    { k: 'chapters', n: '章节' },
+    { k: 'free', n: '自由' }
+  ];
+  var ART_SHORT = {
+    density: { minimal: '墨量 28–34%', balanced: '墨量 42–50%', rich: '墨量 58–66%' },
+    composition: { restrained: '不破版心', flexible: '可破一边', experimental: '版心可无视' },
+    type: { 'photo-only': '只有页码', captions: '每三页一条', chapters: '每四页一句', free: '每页可有字' }
+  };
+  var ART_NOTE = {
+    density: { minimal: '全书墨量 28–34%，白场多，适合长镜头。', balanced: '42–50%，三到四次满版。', rich: '58–66%，接触印多，翻页快。' },
+    composition: { restrained: '只用版心、对页、序列带、白场；不破版心。', flexible: '加满版、接触印、图文对话；可破一边版心。', experimental: '加跨中缝、对页对抗；版心可以完全无视。' },
+    type: { 'photo-only': '只留页码，一句话都不写。', captions: '每三页一条，落在页脚槽里。', chapters: '章节页 + 每四页一句。', free: '每页都可以有字，位置按装置给。' }
+  };
+
+  function persistBrief() {
+    try { localStorage.setItem('memento.brief.v1', JSON.stringify({ engine: state.engine, brief: state.brief })); } catch (e) {}
+  }
+
+  function setBrief(patch) {
+    state.brief = Object.assign({}, state.brief || {}, patch || {});
+    if (state.engine !== 'art') state.engine = 'art';
+    persistBrief();
+    buildRail();
+    rebuild();
+  }
+
+  /* the rail block: structure, density, composition freedom, type, length */
+  function buildArtRail() {
+    var b = state.brief || {};
+    var host = document.getElementById('artStructures');
+    if (!host) return;
+    host.innerHTML = '';
+    ART_STRUCT.forEach(function (it) {
+      var btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'opt opt--sm';
+      btn.setAttribute('aria-pressed', String((b.rhythm || 'crescendo') === it.k));
+      btn.innerHTML = '<span class="opt-body"><span class="opt-name">' + it.n + '</span></span>';
+      btn.onclick = function () { setBrief({ rhythm: it.k }); };
+      host.appendChild(btn);
+    });
+    var cur = ART_STRUCT.filter(function (x) { return x.k === (b.rhythm || 'crescendo'); })[0] || ART_STRUCT[1];
+    var why = document.getElementById('artStructWhy');
+    if (why) why.textContent = cur.note;
+
+    function seg(id, items, value, key) {
+      var box = document.getElementById(id);
+      if (!box) return;
+      box.innerHTML = '';
+      items.forEach(function (it) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = it.n;
+        btn.setAttribute('aria-pressed', String(value === it.k));
+        if (ART_NOTE[key] && ART_NOTE[key][it.k]) btn.title = ART_NOTE[key][it.k];
+        btn.onclick = function () {
+          var patch = {}; patch[key] = it.k; setBrief(patch);
+        };
+        box.appendChild(btn);
+      });
+    }
+    seg('artDensity', ART_DENS, b.density || 'balanced', 'density');
+    seg('artComposition', ART_COMP, b.composition || 'flexible', 'composition');
+    seg('artType', ART_TYPE, b.type || 'captions', 'type');
+
+    var kind = isMemory() ? 'memory' : 'social';
+    var sug = M.PLAN.suggestPages(state.photos.length || 12, kind);
+    var explicit = b.length && b.length.targetPages;
+    var planned = (state.zine && state.zine.plan) ? state.zine.plan.targetPages : null;
+    var shown = explicit || planned || sug;
+    var len = document.getElementById('artLen');
+    if (len) {
+      len.value = String(Math.max(8, Math.min(64, shown)));
+      len.oninput = function () {
+        var v = document.getElementById('artLenVal');
+        if (v) v.textContent = M.PLAN.snap4(Number(len.value)) + ' 页';
+      };
+      len.onchange = function () { setBrief({ length: { targetPages: M.PLAN.snap4(Number(len.value)) } }); };
+    }
+    var lv = document.getElementById('artLenVal');
+    if (lv) lv.textContent = explicit ? explicit + ' 页' : '自动 ' + shown + ' 页';
+    var auto = document.getElementById('artLenAuto');
+    if (auto) {
+      auto.setAttribute('aria-pressed', String(!explicit));
+      auto.onclick = function () { setBrief({ length: { targetPages: null } }); };
+    }
+    var note = document.getElementById('artAdvise');
+    if (note) {
+      note.textContent = [
+        ART_SHORT.density[b.density || 'balanced'],
+        ART_SHORT.composition[b.composition || 'flexible'],
+        ART_SHORT.type[b.type || 'captions']
+      ].filter(Boolean).join(' · ');
+    }
+  }
+
   function isMemory() { return !!(project && project.kind === 'memory'); }
 
   /* a social work is exactly nine (or eleven) images.
@@ -128,6 +244,10 @@
     if (cntBlock) cntBlock.hidden = isJp() || artOn || isMemory();
     var denBlock = document.getElementById('blockDensity');
     if (denBlock) denBlock.hidden = artOn || !isMemory();
+
+    var artBlock = document.getElementById('blockArt');
+    if (artBlock) artBlock.hidden = !artOn;
+    if (artOn) buildArtRail();
 
     el.modes.innerHTML = '';
     MODES.forEach(function (m) {
@@ -697,6 +817,7 @@
     return {
       schemaVersion: 1,
       direction: state.direction,
+      engine: state.engine, brief: JSON.parse(JSON.stringify(state.brief || {})),
       mode: state.mode, scheme: state.scheme, count: state.count, seed: state.seed,
       density: state.density,
       locked: JSON.parse(JSON.stringify(state.locked || {})),
@@ -821,6 +942,8 @@
     state.count = snap.count || 9;
     state.seed = snap.seed || 11;
     state.density = snap.density || 'normal';
+    state.engine = snap.engine || 'classic';
+    if (snap.brief) state.brief = Object.assign({}, state.brief, snap.brief);
     state.locked = JSON.parse(JSON.stringify(snap.locked || {}));
     state.texts = JSON.parse(JSON.stringify(snap.texts || {}));
 
@@ -883,10 +1006,11 @@
     if (state.engine === 'art' && M.ART) {
       var t = textFor(state.direction);
       var usePlan = M.ART.composePlan && state.brief;
+      var briefNow = Object.assign({}, state.brief, { kind: isMemory() ? 'memory' : 'social' });
       state.zine = usePlan
         ? M.ART.composePlan(state.photos, {
             seed: state.seed, title: t.title || '未命名的一卷', year: state.year,
-            lines: t.lines, sections: t.sections, brief: state.brief
+            lines: t.lines, sections: t.sections, brief: briefNow
           })
         : M.ART.compose(state.photos, {
             seed: state.seed, title: t.title || '未命名的一卷', year: state.year,
@@ -903,6 +1027,48 @@
       dir: state.direction, text: textFor(state.direction), pages: state.count - 1
     });
     paintZine();
+  }
+
+  /* the plan, drawn: one bar per page, height = intensity, shade = device.
+     This is the rhythm made visible, not a description of it. */
+  function paintArtPlan() {
+    var box = document.getElementById('artCurve');
+    var note = document.getElementById('artPlanNote');
+    var z = state.zine;
+    if (!box) return;
+    if (state.engine !== 'art' || !z || !z.plan) {
+      box.innerHTML = ''; box.hidden = true;
+      if (note) note.textContent = '';
+      return;
+    }
+    var P = z.plan;
+    box.hidden = false;
+    var lv = document.getElementById('artLenVal');
+    var lenCtl = document.getElementById('artLen');
+    if (lv && !(state.brief && state.brief.length && state.brief.length.targetPages)) {
+      lv.textContent = '自动 ' + P.targetPages + ' 页';
+      if (lenCtl) lenCtl.value = String(Math.max(8, Math.min(64, P.targetPages)));
+    }
+    box.innerHTML = P.pages.map(function (p) {
+      var h = Math.max(5, Math.round(4 + (p.I || 0) * 26));
+      return '<i class="art-bar" data-k="' + p.device + '" style="height:' + h + 'px" ' +
+        'title="第 ' + (p.i + 2) + ' 页 · ' + (p.name || p.device) + ' · 强度 ' + p.I + '"></i>';
+    }).join('');
+    if (note) {
+      var count = {};
+      P.pages.forEach(function (p) { count[p.device] = (count[p.device] || 0) + 1; });
+      var parts = [
+        P.rhythmName,
+        P.targetPages + ' 页',
+        count.full ? '满版 ' + count.full : '',
+        count.gutter ? '跨中缝 ' + count.gutter : '',
+        count.breath ? '白场 ' + count.breath : '',
+        count.divider ? '章节 ' + count.divider : ''
+      ].filter(Boolean);
+      var extra = z.pages.length - 1 - P.pages.length;
+      if (extra > 0) parts.push('补页 ' + extra);
+      note.textContent = parts.join(' · ') + (z.advise ? '　' + z.advise : '');
+    }
   }
 
   function paintWhy() {
@@ -942,6 +1108,7 @@
         : '经典＝现有构图库；艺术指导＝先读照片再定方向（实验）。';
     }
     paintWhy();
+    paintArtPlan();
     var db = document.getElementById('blockDensity');
     if (db) db.hidden = !isMemory() || state.engine === 'art';
     Array.prototype.forEach.call(document.querySelectorAll('#densities button'), function (b) {
@@ -1027,7 +1194,10 @@
          ' 个跨页）· 页数由照片数量决定，可以导出 PDF 打印。')
       : (z.total + ' 张 → ' + z.pages.length + ' 张图 · ' +
          (pair ? '两张一组，手机上滑过去，跨页的图连成一整张。' : '每页独立构图。'));
-    if (el.btnPNG) el.btnPNG.textContent = isMemory() ? '导出整本' : '导出九张';
+    if (el.btnPNG) {
+      var nine = !isMemory() && !(state.engine === 'art' && z.pages.length !== 9);
+      el.btnPNG.textContent = nine ? '导出九张' : '导出整本';
+    }
     setStat(z.total + ' 张 · ' + z.pages.length + (isMemory() ? ' 页' : ' 张图'));
   }
 
@@ -2165,6 +2335,10 @@
     BOOT.push('project');
     loadSavedDir();
     loadSavedText();
+    /* the engine + the five dimensions are workspace preferences, not page content:
+       they are restored last, after the draft, so the draft cannot undo them */
+    var savedUI = null;
+    try { savedUI = JSON.parse(localStorage.getItem('memento.brief.v1') || 'null'); } catch (e) {}
     state.direction = project.designDirection || state.direction;
     if (project.texts && Object.keys(project.texts).length) {
       state.texts = JSON.parse(JSON.stringify(project.texts));
@@ -2201,6 +2375,13 @@
         }
       });
       buildRail(); buildTray(); rebuild();
+    }
+
+    if (savedUI && savedUI.brief) {
+      state.brief = Object.assign({}, state.brief, savedUI.brief);
+      if (savedUI.engine) state.engine = savedUI.engine;
+      if (state.photos.length && state.zine) { buildRail(); rebuild(); }
+      BOOT.push('ui engine=' + state.engine + ' rhythm=' + (state.brief.rhythm || '-'));
     }
 
     if (report) {
