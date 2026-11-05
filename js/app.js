@@ -102,11 +102,21 @@
       };
       el.dirs.appendChild(b);
     });
-    el.dirNote.textContent = (DIRS.filter(function (d) { return d.key === state.direction; })[0] || DIRS[0]).note;
+    var dirPick = (DIRS.filter(function (d) { return d.key === state.direction; })[0] || DIRS[0]);
+    el.dirNote.textContent = state.engine === 'art'
+      ? '艺术指导只用它决定文字与字体气质（构图、密度、张数由画像决定）。'
+      : dirPick.note;
 
-    // the japanese book has its own fixed narrative: no A/B/C, no scheme orders
-    el.modeBlock.hidden = isJp();
-    el.schemeBlock.hidden = isJp();
+    // the japanese book has its own fixed narrative: no A/B/C, no scheme orders.
+    // Art-director mode decides composition from the photos, so the same
+    // controls would be lies there — hide them instead of letting them no-op.
+    var artOn = state.engine === 'art';
+    el.modeBlock.hidden = isJp() || artOn;
+    el.schemeBlock.hidden = isJp() || artOn;
+    var cntBlock = el.counts && el.counts.closest('.rail-block');
+    if (cntBlock) cntBlock.hidden = isJp() || artOn || isMemory();
+    var denBlock = document.getElementById('blockDensity');
+    if (denBlock) denBlock.hidden = artOn || !isMemory();
 
     el.modes.innerHTML = '';
     MODES.forEach(function (m) {
@@ -905,18 +915,18 @@
     el.zinePanel.hidden = false;
     el.empty.hidden = true;
     var cb = el.counts && el.counts.closest('.rail-block');
-    if (cb) cb.hidden = isMemory();
+    if (cb) cb.hidden = isMemory() || state.engine === 'art';
     if (el.engines) {
       Array.prototype.forEach.call(el.engines.children, function (b) {
         b.setAttribute('aria-pressed', String(b.dataset.engine === state.engine));
       });
       if (el.engineNote) el.engineNote.textContent = state.engine === 'art'
-        ? '艺术指导：先读这组照片的色温、饱和、明暗和繁忙度，再定密度曲线与构图族。'
+        ? '艺术指导：先读这组照片的色温、饱和、明暗和繁忙度，再定密度曲线与构图族。构图由它决定，所以下面的「排版模式 / 方案 / 张数 / 松紧」在这套引擎里不生效，已收起。'
         : '经典＝现有构图库；艺术指导＝先读照片再定方向（实验）。';
     }
     paintWhy();
     var db = document.getElementById('blockDensity');
-    if (db) db.hidden = !isMemory();
+    if (db) db.hidden = !isMemory() || state.engine === 'art';
     Array.prototype.forEach.call(document.querySelectorAll('#densities button'), function (b) {
       b.setAttribute('aria-pressed', String(b.dataset.density === state.density));
     });
@@ -1373,7 +1383,7 @@
       var b = e.target.closest('button[data-engine]');
       if (!b) return;
       state.engine = b.dataset.engine;
-      buildRail(); rebuild();
+      buildRail(); buildTray(); rebuild();
     });
   }
 

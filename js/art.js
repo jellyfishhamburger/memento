@@ -273,8 +273,49 @@ window.MEM = window.MEM || {};
       size: size, family: o.family || face, weight: o.weight || 400,
       color: o.color || (o.onDark ? '#fff' : INK), align: o.align || 'left',
       tracking: (o.tracking == null ? d.type.tracking : o.tracking),
-      lineHeight: o.lh || 1.35, opacity: o.opacity == null ? 1 : o.opacity
+      lineHeight: o.lh || 1.35, opacity: o.opacity == null ? 1 : o.opacity,
+      overPhoto: !!o.overPhoto
     });
+  }
+
+  /* Type must never fight the picture. Every page gets one pass that keeps its
+     text in the paper margin: if a band can hold it, it moves there; if it can
+     only fit smaller, it shrinks; if there is no room at all, it is dropped
+     rather than laid over a face. */
+  function textHeight(t) {
+    return t.size * (t.lines.length || 1) * (t.lineHeight || 1.35);
+  }
+
+  function settleText(pg, d, g) {
+    if (!pg.texts || !pg.texts.length || !pg.frames.length) return;
+    var top = Math.min.apply(null, pg.frames.map(function (f) { return f.y; }));
+    var bot = Math.max.apply(null, pg.frames.map(function (f) { return f.y + f.h; }));
+    var bands = [];
+    if (top - g.top > 34) bands.push({ y: g.top, h: top - g.top - 18, atTop: true });
+    if (g.bottom - bot > 34) bands.push({ y: bot + 18, h: g.bottom - bot - 18, atTop: false });
+    if (!bands.length) { pg.texts = pg.texts.filter(function (t) { return t.overPhoto; }); return; }
+
+    var keep = [];
+    pg.texts.forEach(function (t) {
+      if (t.overPhoto) { keep.push(t); return; }
+      var h = textHeight(t);
+      var fits = bands.filter(function (b) { return b.h >= h; });
+      var band = fits.length
+        ? fits.sort(function (a, b) { return b.h - a.h; })[0]
+        : bands.slice().sort(function (a, b) { return b.h - a.h; })[0];
+      if (!band) return;
+      if (h > band.h) {
+        var k = band.h / h;
+        t.size = Math.max(15, t.size * k);
+        h = textHeight(t);
+        if (h > band.h + 2) return;            // still too tall: drop it
+      }
+      t.w = Math.min(t.w, PW - g.outer * 2);
+      t.x = Math.max(g.outer, Math.min(t.x, PW - g.outer - t.w));
+      t.y = band.atTop ? (band.y + Math.max(0, band.h - h)) : band.y;
+      keep.push(t);
+    });
+    pg.texts = keep;
   }
 
   /* density has to mean something visible: scale each page's frames until the
@@ -613,6 +654,7 @@ window.MEM = window.MEM || {};
         }
       }
       fitCoverage(built.pg, dir.coverage, dir.alignment === 'bleed' || dir.temperament === 'loud');
+      settleText(built.pg, dir, g);
       pages.push(built.pg);
       log.push({
         page: pi + 2, family: built.family, photos: chunk.map(function (x) { return x.name || x.id; }),
@@ -631,12 +673,12 @@ window.MEM = window.MEM || {};
       put(cover, coverPhoto, 0, 0, PW, PH, { role: 'bleed' });
       typeBlock(cover, dir, {
         x: g.outer, y: PH - 250, w: PW - g.outer * 2, size: 54, text: title,
-        color: '#fff', lh: 1.16
+        color: '#fff', lh: 1.16, overPhoto: true
       });
       typeBlock(cover, dir, {
         x: g.outer, y: PH - 150, w: PW - g.outer * 2, size: 10.5, tracking: 6,
         text: list.length + ' PHOTOGRAPHS  ·  ' + (opt.year || new Date().getFullYear()),
-        color: 'rgba(255,255,255,.8)'
+        color: 'rgba(255,255,255,.8)', overPhoto: true
       });
     } else {
       var cw = Math.min(g.contentW, PW * 0.62);
@@ -668,6 +710,8 @@ window.MEM = window.MEM || {};
       var extra = FAMILIES[famO](take, dir, g, {
         rand: rand, line: '', head: '', plate: 'PLATE ' + (pages.length + 2)
       });
+      fitCoverage(extra.pg, dir.coverage, dir.temperament === 'loud');
+      settleText(extra.pg, dir, g);
       pages.push(extra.pg);
       log.push({
         page: pages.length + 1, family: famO,

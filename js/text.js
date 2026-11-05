@@ -106,6 +106,21 @@ window.MEM = window.MEM || {};
     };
   }
 
+  /* a new AI direction replaces the previous AI text, it does not stack on it:
+     anything the model wrote last time that the new answer no longer covers is
+     removed. Lines the user typed are never touched. */
+  function dropStale(doc, role, keepCount) {
+    var removed = 0;
+    doc.items = doc.items.filter(function (it) {
+      if (it.role !== role) return true;
+      if (it.isUserEdited) return true;
+      if (it.index < keepCount) return true;
+      if (it.source === 'ai') { removed++; return false; }
+      return true;
+    });
+    return removed;
+  }
+
   /* take an AI direction: never touch what the user wrote themselves */
   function adopt(doc, direction, opt) {
     opt = opt || {};
@@ -123,10 +138,23 @@ window.MEM = window.MEM || {};
     }
     put('title', 0, direction.title);
     put('subtitle', 0, direction.subtitle);
-    (direction.chapterTitles || []).forEach(function (t, i) { put('section', i, t); });
-    (direction.captions || []).forEach(function (c, i) {
-      put('caption', i, typeof c === 'string' ? c : c.text);
-    });
+
+    // the small model loves repeating one word as five "chapters"
+    var seenSec = {};
+    var chapters = (direction.chapterTitles || []).map(function (t) { return String(t || '').trim(); })
+      .filter(function (t) {
+        if (!t || seenSec[t]) return false;
+        seenSec[t] = 1; return true;
+      });
+    chapters.forEach(function (t, i) { put('section', i, t); });
+    dropStale(doc, 'section', chapters.length);
+
+    var caps = (direction.captions || []).map(function (c) {
+      return typeof c === 'string' ? c : c.text;
+    }).filter(Boolean);
+    caps.forEach(function (c, i) { put('caption', i, c); });
+    dropStale(doc, 'caption', caps.length);
+
     if (direction.textDensity) doc.textDensity = direction.textDensity;
     return { applied: applied, kept: kept };
   }
